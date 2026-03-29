@@ -1,0 +1,137 @@
+{
+  "project": "TELE 527 — District Telehealth & Emergency Communication Network",
+  "group": "Group 1",
+  "institution": "BIUST",
+  "author": "Student 1 — Network Architect",
+  "version": "1.0",
+
+  "sites": [
+    "BS1",
+    "BS2",
+    "BS3",
+    "BS4",
+    "BS5"
+  ],
+
+  "site_details": {
+    "BS1": { "label": "Clinic North-West",  "x_km": 8.0,  "y_km": 40.0 },
+    "BS2": { "label": "Clinic North-East",  "x_km": 42.0, "y_km": 40.0 },
+    "BS3": { "label": "Clinic South-West",  "x_km": 8.0,  "y_km": 10.0 },
+    "BS4": { "label": "Clinic South",       "x_km": 25.0, "y_km": 8.0  },
+    "BS5": { "label": "Clinic South-East",  "x_km": 42.0, "y_km": 10.0 }
+  },
+
+  "core_routers": [
+    "CR-1",
+    "CR-2"
+  ],
+
+  "core_router_details": {
+    "CR-1": {
+      "label": "District Hospital",
+      "role": "Primary hub — all BS sites connect here first",
+      "x_km": 25.0,
+      "y_km": 25.0
+    },
+    "CR-2": {
+      "label": "District Health Office",
+      "role": "Backup core router — dual-home failover for all BS sites",
+      "x_km": 20.0,
+      "y_km": 28.0
+    }
+  },
+
+  "topology": {
+    "type": "Dual-homed star (Topology 5)",
+    "district_size_km": 50,
+    "description": "Each clinic (BS) connects to CR-1 as primary and CR-2 as backup. CR-1 and CR-2 are linked by a 13 GHz microwave backbone (primary) and an LTE priority bearer (backup).",
+    "backbone": {
+      "from": "CR-1",
+      "to": "CR-2",
+      "distance_km": 5.8,
+      "primary_link": {
+        "type": "microwave_13ghz",
+        "frequency_ghz": 13.0,
+        "capacity_mbps": 500,
+        "delay_ms": 0.5,
+        "role": "primary",
+        "weight": 1
+      },
+      "backup_link": {
+        "type": "lte_priority",
+        "frequency_mhz": 1800,
+        "qci_class": 65,
+        "standard": "3GPP TS 22.179 MCPTT",
+        "operator": "BTC Botswana",
+        "capacity_mbps": 30,
+        "delay_ms": 45,
+        "role": "backup",
+        "weight": 10
+      }
+    },
+    "backhaul": {
+      "technology": "Licensed microwave",
+      "frequency_ghz": 7.0,
+      "capacity_mbps_per_link": 100,
+      "cr1_to_bs_role": "primary",
+      "cr2_to_bs_role": "backup",
+      "links": [
+        { "from": "CR-1", "to": "BS1", "delay_ms": 8.0,  "role": "primary" },
+        { "from": "CR-1", "to": "BS2", "delay_ms": 8.0,  "role": "primary" },
+        { "from": "CR-1", "to": "BS3", "delay_ms": 9.0,  "role": "primary" },
+        { "from": "CR-1", "to": "BS4", "delay_ms": 7.0,  "role": "primary" },
+        { "from": "CR-1", "to": "BS5", "delay_ms": 9.0,  "role": "primary" },
+        { "from": "CR-2", "to": "BS1", "delay_ms": 13.0, "role": "backup"  },
+        { "from": "CR-2", "to": "BS2", "delay_ms": 24.0, "role": "backup"  },
+        { "from": "CR-2", "to": "BS3", "delay_ms": 20.0, "role": "backup"  },
+        { "from": "CR-2", "to": "BS4", "delay_ms": 21.0, "role": "backup"  },
+        { "from": "CR-2", "to": "BS5", "delay_ms": 26.0, "role": "backup"  }
+      ]
+    }
+  },
+
+  "qos_thresholds": {
+    "telemetry": {
+      "dscp": 46,
+      "dscp_class": "EF — Expedited Forwarding",
+      "scheduler": "strict_priority",
+      "kpi_delay_p95_ms": 50,
+      "offered_load_erl": 0.50,
+      "packet_size_bytes": 256
+    },
+    "voice": {
+      "dscp": 26,
+      "dscp_class": "AF31",
+      "bandwidth_weight_percent": 30,
+      "kpi_blocking_prob": 0.02,
+      "bitrate_kbps": 64,
+      "offered_load_erl": 0.75
+    },
+    "video": {
+      "dscp": 18,
+      "dscp_class": "AF21",
+      "bandwidth_weight_percent": 40,
+      "kpi_delay_p95_ms": 150,
+      "bitrate_mbps": 3.0,
+      "offered_load_erl": 0.67
+    },
+    "best_effort": {
+      "bandwidth_weight_percent": 30
+    }
+  },
+
+  "traffic": {
+    "backhaul_trunk_erl": 3.75,
+    "annual_growth_rate": 0.15,
+    "forecast_horizon_years": 5,
+    "initial_utilisation": 0.60,
+    "planning_trigger_rho": 0.70,
+    "action_trigger_rho": 0.90
+  },
+
+  "utilisation_zones": {
+    "safe_below": 0.70,
+    "monitor_between": [0.70, 0.90],
+    "upgrade_above": 0.90
+  }
+}
