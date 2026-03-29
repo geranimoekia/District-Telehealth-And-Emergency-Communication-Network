@@ -374,3 +374,37 @@ if __name__ == "__main__":
     print("\nPhased plan:")
     for p in rec["phased_plan"]:
         print(f"  [{p['phase']}] Year {p['trigger_year']} — {p['action']}")
+
+    # ------------------------------------------------------------------
+    # CSV export
+    # ------------------------------------------------------------------
+    import os
+    out_dir = os.path.join(os.path.dirname(__file__), "..", "outputs")
+    os.makedirs(out_dir, exist_ok=True)
+
+    fc_util = forecast_utilisation(sc)
+    fc_util["annual_table"].to_csv(
+        os.path.join(out_dir, "forecasting_utilisation_annual.csv"), index=False
+    )
+    fc_util["curve"].to_csv(
+        os.path.join(out_dir, "forecasting_utilisation_curve.csv"), index=False
+    )
+    forecast_erlang(sc).to_csv(
+        os.path.join(out_dir, "forecasting_erlang_per_site.csv"), index=False
+    )
+    forecast_trunk_erlang(sc).to_csv(
+        os.path.join(out_dir, "forecasting_trunk_erlang.csv"), index=False
+    )
+    pd.DataFrame(rec["phased_plan"]).to_csv(
+        os.path.join(out_dir, "forecasting_upgrade_plan.csv"), index=False
+    )
+
+    print("\nCSV files saved to outputs/:")
+    for name in [
+        "forecasting_utilisation_annual.csv",
+        "forecasting_utilisation_curve.csv",
+        "forecasting_erlang_per_site.csv",
+        "forecasting_trunk_erlang.csv",
+        "forecasting_upgrade_plan.csv",
+    ]:
+        print(f"  {name}")

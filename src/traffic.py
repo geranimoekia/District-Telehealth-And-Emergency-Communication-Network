@@ -435,3 +435,36 @@ if __name__ == "__main__":
     events = generate_traffic_events(sc, load_multiplier=1.0, duration_hours=1.0)
     print(events.head(10).to_string(index=False))
     print(f"\nTotal events generated: {len(events)}")
+
+    # ------------------------------------------------------------------
+    # CSV export
+    # ------------------------------------------------------------------
+    import os
+    out_dir = os.path.join(os.path.dirname(__file__), "..", "outputs")
+    os.makedirs(out_dir, exist_ok=True)
+
+    compute_offered_load(sc).to_csv(
+        os.path.join(out_dir, "traffic_offered_load.csv"), index=False
+    )
+    compute_traffic_matrix(sc).to_csv(
+        os.path.join(out_dir, "traffic_matrix.csv"), index=False
+    )
+    stress_bandwidth_sweep(sc).to_csv(
+        os.path.join(out_dir, "traffic_stress_bandwidth_sweep.csv"), index=False
+    )
+    events.to_csv(
+        os.path.join(out_dir, "traffic_events.csv"), index=False
+    )
+    pd.DataFrame([compute_trunk_demand(sc)]).to_csv(
+        os.path.join(out_dir, "traffic_trunk_demand.csv"), index=False
+    )
+
+    print("\nCSV files saved to outputs/:")
+    for name in [
+        "traffic_offered_load.csv",
+        "traffic_matrix.csv",
+        "traffic_stress_bandwidth_sweep.csv",
+        "traffic_events.csv",
+        "traffic_trunk_demand.csv",
+    ]:
+        print(f"  {name}")

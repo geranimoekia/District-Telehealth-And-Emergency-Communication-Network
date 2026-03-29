@@ -652,54 +652,7 @@ def run_teletraffic(
 
 
 # -----------------------------------------------------------------------
-# Standalone demo
-# -----------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import os
-
-    scenario_path = os.path.join(os.path.dirname(__file__), "..", "scenario.yaml")
-    sc = load_scenario(scenario_path)
-
-    print("=" * 65)
-    print("VOICE DIMENSIONING TABLE (alpha = 1.0)")
-    print("=" * 65)
-    print(full_dimensioning_table(sc).to_string(index=False))
-
-    print("\n" + "=" * 65)
-    print("BACKHAUL TRUNK SUMMARY")
-    print("=" * 65)
-    trunk = dimension_backhaul_trunk(sc)
-    for k, v in trunk.items():
-        print(f"  {k:30s}: {v}")
-
-    print("\n" + "=" * 65)
-    print("DELAY KPIs (alpha = 1.0)")
-    print("=" * 65)
-    print(evaluate_delay_kpis(sc).to_string(index=False))
-
-    print("\n" + "=" * 65)
-    print("BREAKING POINT STRESS SWEEP")
-    print("=" * 65)
-    sweep = stress_sweep(sc)
-    print(sweep.to_string(index=False))
-
-    print("\n" + "=" * 65)
-    print("BREAKING POINT ANALYSIS")
-    print("=" * 65)
-    bp = find_breaking_point(sc)
-    for k, v in bp.items():
-        print(f"  {k:30s}: {v}")
-
-    print("\n" + "=" * 65)
-    print("ERLANG B  -  voice at A=0.75 Erl")
-    print("=" * 65)
-    curve = erlang_b_curve(0.75, N_max=10)
-    print(curve.to_string(index=False))
-
-
-# -----------------------------------------------------------------------
-# Signaling Load Model  [ADDED — was missing]
+# Signaling Load Model
 # -----------------------------------------------------------------------
 
 def compute_signaling_load(
@@ -794,3 +747,88 @@ def signaling_summary(scenario: dict, load_multiplier: float = 1.0) -> dict:
         "worst_setup_site":       df.loc[df["call_setup_delay_ms"].idxmax(), "site"],
         "all_kpis_met":           bool(df["kpi_met"].all()),
     }
+
+
+# -----------------------------------------------------------------------
+# Standalone demo
+# -----------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import os
+
+    scenario_path = os.path.join(os.path.dirname(__file__), "..", "scenario.yaml")
+    sc = load_scenario(scenario_path)
+
+    print("=" * 65)
+    print("VOICE DIMENSIONING TABLE (alpha = 1.0)")
+    print("=" * 65)
+    print(full_dimensioning_table(sc).to_string(index=False))
+
+    print("\n" + "=" * 65)
+    print("BACKHAUL TRUNK SUMMARY")
+    print("=" * 65)
+    trunk = dimension_backhaul_trunk(sc)
+    for k, v in trunk.items():
+        print(f"  {k:30s}: {v}")
+
+    print("\n" + "=" * 65)
+    print("DELAY KPIs (alpha = 1.0)")
+    print("=" * 65)
+    print(evaluate_delay_kpis(sc).to_string(index=False))
+
+    print("\n" + "=" * 65)
+    print("BREAKING POINT STRESS SWEEP")
+    print("=" * 65)
+    sweep = stress_sweep(sc)
+    print(sweep.to_string(index=False))
+
+    print("\n" + "=" * 65)
+    print("BREAKING POINT ANALYSIS")
+    print("=" * 65)
+    bp = find_breaking_point(sc)
+    for k, v in bp.items():
+        print(f"  {k:30s}: {v}")
+
+    print("\n" + "=" * 65)
+    print("ERLANG B  -  voice at A=0.75 Erl")
+    print("=" * 65)
+    curve = erlang_b_curve(0.75, N_max=10)
+    print(curve.to_string(index=False))
+
+    # ------------------------------------------------------------------
+    # CSV export
+    # ------------------------------------------------------------------
+    out_dir = os.path.join(os.path.dirname(__file__), "..", "outputs")
+    os.makedirs(out_dir, exist_ok=True)
+
+    full_dimensioning_table(sc).to_csv(
+        os.path.join(out_dir, "teletraffic_dimensioning_table.csv"), index=False
+    )
+    evaluate_delay_kpis(sc).to_csv(
+        os.path.join(out_dir, "teletraffic_delay_kpis.csv"), index=False
+    )
+    stress_sweep(sc).to_csv(
+        os.path.join(out_dir, "teletraffic_stress_sweep.csv"), index=False
+    )
+    erlang_curves_for_report(sc).to_csv(
+        os.path.join(out_dir, "teletraffic_erlang_curves.csv"), index=False
+    )
+    compute_signaling_load(sc).to_csv(
+        os.path.join(out_dir, "teletraffic_signaling_load.csv"), index=False
+    )
+    pd.DataFrame([dimension_backhaul_trunk(sc)]).to_csv(
+        os.path.join(out_dir, "teletraffic_trunk_summary.csv"), index=False
+    )
+
+    print("\nCSV files saved to outputs/:")
+    for name in [
+        "teletraffic_dimensioning_table.csv",
+        "teletraffic_delay_kpis.csv",
+        "teletraffic_stress_sweep.csv",
+        "teletraffic_erlang_curves.csv",
+        "teletraffic_signaling_load.csv",
+        "teletraffic_trunk_summary.csv",
+    ]:
+        print(f"  {name}")
+
+
