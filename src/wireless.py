@@ -3,175 +3,176 @@ wireless.py
 ===========
 Student 3 — Wireless Planning Lead | TELE 527 Group 1
 
-Core wireless planning module.  Builds coverage grids, evaluates frequency
-reuse, and analyses sectorization effects for the District Telehealth scenario.
+Full wireless planning module that:
+  1. Reads scenario.yaml (shared with Student 2)
+  2. Consumes Student 2's traffic outputs for backhaul capacity validation
+  3. Produces all required outputs including Student 4's interface fields
+  4. Generates figures for the Streamlit dashboard
 
-Exposes:
-  build_coverage_grid()      — 2-D received-power grid across the district
-  coverage_statistics()      — percentage area above each RSSI threshold
-  plot_coverage_heatmap()    — required heatmap figure with contour overlays
-  plot_path_loss_curves()    — model comparison plot for methodology section
-  frequency_reuse_cluster()  — cluster size and D/R ratio table
-  sectorization_analysis()   — omni vs 3-sector capacity/gain comparison
-  plot_reuse_pattern()       — hexagonal cluster visualisation
-  improvement_study()        — before/after: adding a 6th site or raising antenna
+Outputs provided to Student 4 (Signaling & Routing Lead):
+  - Per-link usage (primary vs backup, Mbps and % utilisation)
+  - Erlang B blocking probability per site
+  - Call arrival rates per BS
+  - Call setup delay per site
+  - Grade of Service (GoS)
+  - Link quality classification (good / marginal / poor)
 """
 
 import os
+import math
 import json
 import numpy as np
 import matplotlib
-matplotlib.use("Agg")          # non-interactive backend — safe for scripts
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D
 
 from propagation import (
-    cost231_extension,
-    received_power_dbm,
-    free_space_loss,
-    okumura_hata_urban,
+    cost231_hata, free_space_loss, okumura_hata_urban,
+    compute_link_budget, site_link_budget_table,
+    microwave_budget, rain_attenuation_db, _coverage_radius,
 )
 
-# ── output directory ──────────────────────────────────────────────────────────
 FIG_DIR = os.path.join(os.path.dirname(__file__), "figures")
 RES_DIR = os.path.join(os.path.dirname(__file__), "results")
 os.makedirs(FIG_DIR, exist_ok=True)
 os.makedirs(RES_DIR, exist_ok=True)
 
 
-# =============================================================================
-# 1.  Coverage grid
-# =============================================================================
+# ============================================================
+# 1.  Coverage grid  (50 km district, scenario-driven)
+# ============================================================
 
-def build_coverage_grid(sites,
-                        grid_res: int   = 150,
-                        area_km:  float = 20.0,
-                        tx_power_dbm:   float = 46,
-                        tx_gain_dbi:    float = 17,
-                        rx_gain_dbi:    float = 0,
-                        f_mhz:          float = 1800,
-                        h_base:         float = 35,
-                        h_mobile:       float = 1.5,
-                        system_losses:  float = 2.0) -> tuple:
+def build_coverage_grid(scenario: dict,
+                        load_multiplier: float = 1.0,
+                        grid_res: int = 120) -> tuple:
     """
-    Build a 2-D grid of best-server received power across the district area.
-
-    Parameters
-    ----------
-    sites         : list of (x_km, y_km) tuples
-    grid_res      : number of sample points per axis
-    area_km       : side length of square coverage area in km
-    tx_power_dbm  : base-station transmit power (dBm)
-    tx_gain_dbi   : transmit antenna gain (dBi)
-    rx_gain_dbi   : receive antenna gain (dBi)
-    f_mhz         : carrier frequency (MHz)
-    h_base        : base-station antenna height (m)
-    h_mobile      : mobile/CPE height (m)
-    system_losses : miscellaneous system losses (dB)
-
-    Returns
-    -------
-    xs, ys : 1-D coordinate arrays (km)
-    grid   : 2-D array of best-server Rx power (dBm), shape (grid_res, grid_res)
+    2-D best-server received-power grid across the 50 km district.
+    Uses COST 231 Hata with scenario.yaml parameters.
     """
-    xs = np.linspace(0, area_km, grid_res)
-    ys = np.linspace(0, area_km, grid_res)
+    env  = scenario["environment"]
+    f    = env["carrier_frequency_mhz"]
+    hb   = env["base_station_height_m"]
+    hm   = env["mobile_height_m"]
+    ptx  = env["tx_power_dbm"]
+    sfm  = env["shadow_fading_margin_db"]
+    tx_gain = 17.0
+    feeder  = 2.0
+    eirp    = ptx + tx_gain - feeder
 
-    # initialise to a very low floor
+    size = env["district_size_km"]
+    xs   = np.linspace(0, size, grid_res)
+    ys   = np.linspace(0, size, grid_res)
     grid = np.full((grid_res, grid_res), -150.0)
 
-    for (sx, sy) in sites:
+    bs_sites = [(s["x_km"], s["y_km"])
+                for s in scenario["sites"] if s["type"] == "base_station"]
+
+    for (sx, sy) in bs_sites:
         for j, y in enumerate(ys):
             for i, x in enumerate(xs):
-                d = float(np.sqrt((x - sx) ** 2 + (y - sy) ** 2))
-                d = max(d, 0.05)            # minimum 50 m to avoid singularity
-                pl = cost231_extension(d, f_mhz, h_base, h_mobile)
-                rp = received_power_dbm(tx_power_dbm, tx_gain_dbi,
-                                        rx_gain_dbi, pl, system_losses)
-                if rp > grid[j, i]:
-                    grid[j, i] = rp
+                d   = max(math.hypot(x - sx, y - sy), 0.05)
+                pl  = cost231_hata(d, f, hb, hm, cm=0.0)
+                prx = eirp - pl
+                if prx > grid[j, i]:
+                    grid[j, i] = prx
+
     return xs, ys, grid
 
 
-def coverage_statistics(grid: np.ndarray,
-                        thresholds_dbm: list = (-85, -95)) -> dict:
-    """
-    Compute percentage of grid cells above each RSSI threshold.
+def coverage_statistics(grid: np.ndarray, scenario: dict) -> dict:
+    env    = scenario["environment"]
+    thr_od = env["coverage_threshold_outdoor_dbm"]
+    thr_in = env["coverage_threshold_indoor_dbm"]
+    total  = grid.size
+    return {
+        "outdoor_pct": round(100 * float(np.sum(grid >= thr_od)) / total, 1),
+        "indoor_pct":  round(100 * float(np.sum(grid >= thr_in)) / total, 1),
+        "threshold_outdoor_dbm": thr_od,
+        "threshold_indoor_dbm":  thr_in,
+        "max_rx_dbm":  round(float(grid.max()), 1),
+        "min_rx_dbm":  round(float(grid.min()), 1),
+        "median_rx_dbm": round(float(np.median(grid)), 1),
+    }
 
-    Returns
-    -------
-    dict  { threshold_dbm: coverage_pct }
-    """
-    total = grid.size
-    stats = {}
-    for thr in thresholds_dbm:
-        count = float(np.sum(grid >= thr))
-        stats[int(thr)] = round(100.0 * count / total, 1)
-    return stats
 
+# ============================================================
+# 2.  Coverage heatmap figure
+# ============================================================
 
-# =============================================================================
-# 2.  Coverage heatmap plot (required deliverable)
-# =============================================================================
+def plot_coverage_heatmap(xs, ys, grid, scenario: dict,
+                          title="Coverage Heatmap — COST 231 @ 1800 MHz",
+                          filename="coverage_heatmap.png") -> plt.Figure:
+    env     = scenario["environment"]
+    thr_od  = env["coverage_threshold_outdoor_dbm"]
+    thr_in  = env["coverage_threshold_indoor_dbm"]
+    bs_list = [s for s in scenario["sites"] if s["type"] == "base_station"]
+    cr_list = [s for s in scenario["sites"] if s["type"] == "core_router"]
 
-def plot_coverage_heatmap(xs, ys, grid,
-                          sites,
-                          site_names=None,
-                          thresholds_dbm=(-85, -95),
-                          title: str = "Coverage Heatmap — COST 231 @ 1800 MHz",
-                          filename: str = "coverage_heatmap.png") -> plt.Figure:
-    """
-    Produces the required coverage heatmap with:
-    • Colour-coded received-power surface (green = good, red = weak)
-    • Dashed contour at −85 dBm  (good coverage threshold)
-    • Dotted contour at −95 dBm  (edge coverage threshold)
-    • Base-station site markers
-    • Colour bar and labelled axes
-    """
-    fig, ax = plt.subplots(figsize=(8, 7))
-
-    # colour map: red (weak) → yellow → green (good)
-    cmap = plt.cm.RdYlGn
-    norm = mcolors.Normalize(vmin=-120, vmax=-50)
-    pcm  = ax.pcolormesh(xs, ys, grid, cmap=cmap, norm=norm, shading="auto")
-    cbar = fig.colorbar(pcm, ax=ax, pad=0.02)
+    fig, ax = plt.subplots(figsize=(9, 8))
+    norm = mcolors.Normalize(vmin=-130, vmax=-50)
+    pcm  = ax.pcolormesh(xs, ys, grid, cmap="RdYlGn", norm=norm, shading="auto")
+    cbar = fig.colorbar(pcm, ax=ax, pad=0.02, shrink=0.85)
     cbar.set_label("Received power (dBm)", fontsize=10)
 
-    # threshold contours
-    styles   = ["--", ":"]
-    colours  = ["white", "cyan"]
-    for thr, ls, col in zip(thresholds_dbm, styles, colours):
-        cs = ax.contour(xs, ys, grid, levels=[thr],
-                        colors=[col], linewidths=2, linestyles=ls)
-        ax.clabel(cs, fmt=f"{thr} dBm", fontsize=8, colors=[col])
+    # Threshold contours
+    for thr, ls, col, lbl in [
+        (thr_od, "--", "white", f"{thr_od} dBm (outdoor)"),
+        (thr_in, ":",  "cyan",  f"{thr_in} dBm (indoor)"),
+    ]:
+        try:
+            cs = ax.contour(xs, ys, grid, levels=[thr],
+                            colors=[col], linewidths=2, linestyles=ls)
+            ax.clabel(cs, fmt=f"{thr} dBm", fontsize=8, colors=[col])
+        except Exception:
+            pass
 
-    # site markers
-    names = site_names or [f"S{i+1}" for i in range(len(sites))]
-    for (sx, sy), name in zip(sites, names):
-        ax.plot(sx, sy, "^", color="white", markersize=10,
-                markeredgecolor="black", markeredgewidth=1.2, zorder=5)
-        ax.annotate(name, (sx, sy), textcoords="offset points",
-                    xytext=(4, 6), fontsize=7, color="white",
-                    fontweight="bold")
+    # BS markers
+    for bs in bs_list:
+        ax.plot(bs["x_km"], bs["y_km"], "^", color="white", markersize=11,
+                markeredgecolor="black", markeredgewidth=1.3, zorder=6)
+        ax.annotate(bs["name"], (bs["x_km"], bs["y_km"]),
+                    xytext=(3, 7), textcoords="offset points",
+                    fontsize=8, color="white", fontweight="bold")
 
-    # legend
+    # Core router markers
+    for cr in cr_list:
+        ax.plot(cr["x_km"], cr["y_km"], "s", color="gold", markersize=11,
+                markeredgecolor="black", markeredgewidth=1.3, zorder=6)
+        ax.annotate(cr["name"], (cr["x_km"], cr["y_km"]),
+                    xytext=(3, 7), textcoords="offset points",
+                    fontsize=8, color="gold", fontweight="bold")
+
+    # Draw backhaul links
+    cr1 = next(s for s in scenario["sites"] if s["name"] == "CR-1")
+    cr2 = next(s for s in scenario["sites"] if s["name"] == "CR-2")
+    for bs in bs_list:
+        ax.plot([cr1["x_km"], bs["x_km"]], [cr1["y_km"], bs["y_km"]],
+                color="white", alpha=0.3, lw=1, linestyle="-")
+        ax.plot([cr2["x_km"], bs["x_km"]], [cr2["y_km"], bs["y_km"]],
+                color="cyan", alpha=0.15, lw=0.8, linestyle="--")
+    ax.plot([cr1["x_km"], cr2["x_km"]], [cr1["y_km"], cr2["y_km"]],
+            color="gold", lw=2, linestyle="-", alpha=0.7)
+
     legend_elements = [
-        Line2D([0], [0], color="white",  linestyle="--", lw=2, label="−85 dBm (good)"),
-        Line2D([0], [0], color="cyan",   linestyle=":",  lw=2, label="−95 dBm (edge)"),
+        Line2D([0], [0], color="white",  ls="--", lw=2, label=f"{thr_od} dBm outdoor"),
+        Line2D([0], [0], color="cyan",   ls=":",  lw=2, label=f"{thr_in} dBm indoor"),
         Line2D([0], [0], marker="^", color="w", markerfacecolor="white",
                markersize=9, markeredgecolor="black", label="Base station"),
+        Line2D([0], [0], marker="s", color="w", markerfacecolor="gold",
+               markersize=9, markeredgecolor="black", label="Core router"),
+        Line2D([0], [0], color="gold", lw=2, label="13 GHz backbone"),
     ]
     ax.legend(handles=legend_elements, loc="upper left",
-              fontsize=8, framealpha=0.7, facecolor="#222222", labelcolor="white")
+              fontsize=8, framealpha=0.75, facecolor="#1a1a2e", labelcolor="white")
 
     ax.set_xlabel("East–West distance (km)", fontsize=10)
     ax.set_ylabel("North–South distance (km)", fontsize=10)
-    ax.set_title(title, fontsize=11, pad=10)
+    ax.set_title(title, fontsize=12, pad=10)
     ax.set_xlim(0, xs[-1])
     ax.set_ylim(0, ys[-1])
-
     plt.tight_layout()
     path = os.path.join(FIG_DIR, filename)
     fig.savefig(path, dpi=180, bbox_inches="tight")
@@ -179,37 +180,65 @@ def plot_coverage_heatmap(xs, ys, grid,
     return fig
 
 
-# =============================================================================
-# 3.  Path-loss comparison plot (methodology section)
-# =============================================================================
+# ============================================================
+# 3.  Path-loss comparison
+# ============================================================
 
-def plot_path_loss_curves(f_mhz: float = 1800,
-                          h_base: float = 35,
-                          filename: str = "path_loss_curves.png") -> plt.Figure:
-    """
-    Comparison of FSPL, Okumura-Hata urban, and COST 231 models.
-    Justifies choice of COST 231 for the district scenario.
-    """
-    distances = np.linspace(0.1, 20, 300)
+def plot_path_loss_curves(scenario: dict,
+                          filename="path_loss_curves.png") -> plt.Figure:
+    env = scenario["environment"]
+    f   = env["carrier_frequency_mhz"]
+    hb  = env["base_station_height_m"]
+    hm  = env["mobile_height_m"]
+    ptx = env["tx_power_dbm"]
+    tx_gain = 17.0
+    feeder  = 2.0
+    eirp    = ptx + tx_gain - feeder
 
-    fspl = [free_space_loss(d, f_mhz) for d in distances]
-    oh   = [okumura_hata_urban(d, f_mhz, h_base) for d in distances]
-    c231 = [cost231_extension(d, f_mhz, h_base) for d in distances]
+    distances = np.linspace(0.1, 30, 400)
+    fspl = [free_space_loss(d, f) for d in distances]
+    oh   = [okumura_hata_urban(d, f, hb, hm) for d in distances]
+    c231 = [cost231_hata(d, f, hb, hm, 0) for d in distances]
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(distances, fspl, "b--",  lw=1.5, label="Free-space (FSPL)")
-    ax.plot(distances, oh,   "g-",   lw=1.8, label="Okumura-Hata Urban")
-    ax.plot(distances, c231, "r-",   lw=2.2, label="COST 231 (selected)")
-    ax.axhline(-50 + 46 + 17,  color="gray", linestyle=":", lw=1)   # Tx EIRP reference
-    ax.axvline(10, color="orange", linestyle="--", lw=1, label="10 km reference")
+    # Received power curves
+    prx_c231 = [eirp - pl for pl in c231]
+    thr_od   = env["coverage_threshold_outdoor_dbm"]
+    thr_in   = env["coverage_threshold_indoor_dbm"]
 
-    ax.set_xlabel("Distance (km)", fontsize=10)
-    ax.set_ylabel("Path loss (dB)", fontsize=10)
-    ax.set_title(f"Path Loss Model Comparison — {f_mhz} MHz, h_base={h_base} m",
-                 fontsize=11)
-    ax.legend(fontsize=9)
-    ax.grid(True, alpha=0.3)
-    ax.invert_yaxis()
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+    # Left: path loss
+    ax1.plot(distances, fspl, "b--", lw=1.5, label="FSPL")
+    ax1.plot(distances, oh,   "g-",  lw=1.8, label="Okumura-Hata Urban")
+    ax1.plot(distances, c231, "r-",  lw=2.5, label="COST 231 (selected)", zorder=5)
+    ax1.set_xlabel("Distance (km)", fontsize=10)
+    ax1.set_ylabel("Path loss (dB)", fontsize=10)
+    ax1.set_title(f"Path Loss Models @ {f} MHz, h_base={hb} m", fontsize=10)
+    ax1.legend(fontsize=9)
+    ax1.grid(True, alpha=0.3)
+    ax1.invert_yaxis()
+
+    # Right: received power + thresholds
+    ax2.plot(distances, prx_c231, "r-", lw=2.5, label="Rx Power (COST 231)")
+    ax2.axhline(thr_od, color="orange", ls="--", lw=1.8,
+                label=f"Outdoor threshold ({thr_od} dBm)")
+    ax2.axhline(thr_in, color="cyan", ls=":", lw=1.8,
+                label=f"Indoor threshold ({thr_in} dBm)")
+
+    # Coverage radius
+    r_cov = _coverage_radius(scenario)
+    ax2.axvline(r_cov, color="green", ls="-.", lw=1.5,
+                label=f"Coverage radius ({r_cov:.1f} km)")
+    ax2.fill_between(distances, thr_od, prx_c231,
+                     where=[p > thr_od for p in prx_c231],
+                     alpha=0.15, color="green")
+    ax2.set_xlabel("Distance (km)", fontsize=10)
+    ax2.set_ylabel("Received power (dBm)", fontsize=10)
+    ax2.set_title("Received Power vs Distance", fontsize=10)
+    ax2.legend(fontsize=9)
+    ax2.grid(True, alpha=0.3)
+
+    plt.suptitle("Propagation Analysis — District Telehealth Network", fontsize=12)
     plt.tight_layout()
     path = os.path.join(FIG_DIR, filename)
     fig.savefig(path, dpi=180, bbox_inches="tight")
@@ -217,120 +246,63 @@ def plot_path_loss_curves(f_mhz: float = 1800,
     return fig
 
 
-# =============================================================================
+# ============================================================
 # 4.  Frequency reuse
-# =============================================================================
+# ============================================================
 
-def frequency_reuse_cluster(reuse_factor: int = 4,
-                             total_bandwidth_mhz: float = 20,
-                             channel_bw_mhz: float = 5) -> dict:
-    """
-    Frequency reuse analysis.
-
-    Parameters
-    ----------
-    reuse_factor        : cluster size N (number of cells per cluster)
-    total_bandwidth_mhz : total spectrum available (MHz)
-    channel_bw_mhz      : per-cell channel bandwidth (MHz)
-
-    Returns
-    -------
-    dict with engineering quantities
-    """
-    D_over_R  = float(np.sqrt(3 * reuse_factor))
-    channels_per_cell = total_bandwidth_mhz / reuse_factor / channel_bw_mhz
-    sir_db    = 10 * np.log10((D_over_R ** 2.0) / 6)   # approx SIR for omni
-
+def frequency_reuse_cluster(N: int = 4,
+                             total_bw_mhz: float = 20,
+                             ch_bw_mhz: float = 5) -> dict:
+    D_over_R   = float(np.sqrt(3 * N))
+    ch_per_cell = total_bw_mhz / N / ch_bw_mhz
+    sir_db      = 10 * np.log10((D_over_R ** 2) / 6)
     return {
-        "reuse_factor":      reuse_factor,
+        "reuse_factor":      N,
         "D_R_ratio":         round(D_over_R, 3),
-        "channels_per_cell": round(channels_per_cell, 1),
+        "channels_per_cell": round(ch_per_cell, 1),
         "approx_SIR_dB":     round(sir_db, 1),
-        "spectral_efficiency": round(1 / reuse_factor, 3),
-        "note": (f"N={reuse_factor}: D/R={D_over_R:.2f}, "
-                 f"{channels_per_cell:.0f} channels/cell, "
-                 f"SIR≈{sir_db:.1f} dB"),
+        "spectral_efficiency": round(1 / N, 3),
     }
 
 
-def sectorization_analysis(reuse_factor: int = 4,
-                           sectors: int = 3,
-                           total_bandwidth_mhz: float = 20,
-                           channel_bw_mhz: float = 5) -> dict:
-    """
-    Compare omnidirectional vs K-sector antenna configuration.
-
-    With S sectors per site:
-      • Effective reuse factor improves by factor S (more spatial reuse)
-      • Each sector sees 1/S of the interference sources compared to omni
-      • Capacity per site scales with S (more channels reused per km²)
-    """
-    omni  = frequency_reuse_cluster(reuse_factor, total_bandwidth_mhz, channel_bw_mhz)
-    # With sectorization, effective cluster size can be reduced
-    # because each sector already provides directional isolation
-    effective_N = max(1, reuse_factor // sectors) if sectors > 1 else reuse_factor
-    sector_data = frequency_reuse_cluster(effective_N, total_bandwidth_mhz, channel_bw_mhz)
-
-    capacity_gain = sectors * sector_data["channels_per_cell"] / omni["channels_per_cell"]
-
+def sectorization_analysis(N: int = 4, sectors: int = 3,
+                            total_bw: float = 20, ch_bw: float = 5) -> dict:
+    omni   = frequency_reuse_cluster(N, total_bw, ch_bw)
+    eff_N  = max(1, N // sectors)
+    sect   = frequency_reuse_cluster(eff_N, total_bw, ch_bw)
+    gain   = sectors * sect["channels_per_cell"] / max(omni["channels_per_cell"], 0.01)
     return {
-        "omni":            omni,
-        "sectorized":      sector_data,
-        "num_sectors":     sectors,
-        "capacity_gain_x": round(capacity_gain, 2),
-        "summary": (f"{sectors}-sector config gives ×{capacity_gain:.1f} capacity "
-                    f"vs omni at N={reuse_factor}"),
+        "omni":           omni,
+        "sectorized":     sect,
+        "sectors":        sectors,
+        "capacity_gain_x": round(gain, 2),
     }
 
 
-# =============================================================================
-# 5.  Reuse pattern visualisation
-# =============================================================================
-
-def plot_reuse_pattern(reuse_factor: int = 4,
-                       filename: str = "reuse_pattern.png") -> plt.Figure:
-    """
-    Draws a hexagonal frequency-reuse cluster pattern.
-    Each colour represents a different frequency assignment group.
-    """
+def plot_reuse_pattern(N: int = 4, filename="reuse_pattern.png") -> plt.Figure:
     fig, ax = plt.subplots(figsize=(8, 7))
-
-    # generate a grid of hexagon centres
-    colours = plt.cm.Set1.colors[:reuse_factor]
-    hex_r   = 1.0    # normalised cell radius
-
+    colours = plt.cm.Set1.colors[:max(N, 1)]
+    hex_r   = 1.0
     freq_idx = 0
-    cell_labels = []
     for row in range(-3, 4):
         for col in range(-4, 5):
             cx = col * 1.5 * hex_r
             cy = row * np.sqrt(3) * hex_r + (col % 2) * np.sqrt(3) / 2 * hex_r
-            colour = colours[freq_idx % reuse_factor]
-            hex_patch = mpatches.RegularPolygon(
-                (cx, cy), numVertices=6, radius=hex_r * 0.95,
-                orientation=0, facecolor=colour, edgecolor="white",
-                linewidth=1.5, alpha=0.8)
-            ax.add_patch(hex_patch)
-            ax.text(cx, cy, f"f{freq_idx % reuse_factor + 1}",
-                    ha="center", va="center", fontsize=8,
-                    fontweight="bold", color="white")
-            cell_labels.append(freq_idx % reuse_factor + 1)
+            colour = colours[freq_idx % N]
+            p = mpatches.RegularPolygon((cx, cy), numVertices=6, radius=hex_r * 0.95,
+                                         orientation=0, facecolor=colour,
+                                         edgecolor="white", linewidth=1.5, alpha=0.8)
+            ax.add_patch(p)
+            ax.text(cx, cy, f"f{freq_idx % N + 1}", ha="center", va="center",
+                    fontsize=8, fontweight="bold", color="white")
             freq_idx += 1
-
-    ax.set_xlim(-6, 6)
-    ax.set_ylim(-6, 6)
-    ax.set_aspect("equal")
-    ax.axis("off")
-
-    # legend
-    legend_patches = [
-        mpatches.Patch(color=colours[i], label=f"Frequency group f{i+1}")
-        for i in range(reuse_factor)
-    ]
-    ax.legend(handles=legend_patches, loc="upper right", fontsize=9,
-              title=f"N={reuse_factor} Reuse Pattern")
-    ax.set_title(f"Frequency Reuse Pattern — Cluster Size N = {reuse_factor}",
-                 fontsize=12, pad=12)
+    ax.set_xlim(-6, 6); ax.set_ylim(-6, 6)
+    ax.set_aspect("equal"); ax.axis("off")
+    patches = [mpatches.Patch(color=colours[i], label=f"Freq group f{i+1}")
+               for i in range(N)]
+    ax.legend(handles=patches, loc="upper right", fontsize=9,
+              title=f"N={N} Reuse Pattern")
+    ax.set_title(f"Frequency Reuse — Cluster Size N={N}", fontsize=12, pad=12)
     plt.tight_layout()
     path = os.path.join(FIG_DIR, filename)
     fig.savefig(path, dpi=150, bbox_inches="tight")
@@ -338,74 +310,279 @@ def plot_reuse_pattern(reuse_factor: int = 4,
     return fig
 
 
-# =============================================================================
-# 6.  Improvement study (before / after)
-# =============================================================================
+# ============================================================
+# 5.  Backhaul capacity validation  (Student 2 outputs consumed here)
+# ============================================================
 
-def improvement_study(base_sites: list,
-                      scenario_cfg: dict,
-                      filename_prefix: str = "improvement") -> dict:
+def validate_backhaul_capacity(scenario: dict,
+                                traffic_matrix,
+                                load_multiplier: float = 1.0) -> list[dict]:
     """
-    Compares baseline 5-site layout against two improvements:
-      A) Adding a 6th site at the district's coverage black-spot
-      B) Raising antenna height from 35 m to 50 m
+    Cross-checks each BS→CR-1 link against:
+      a) Microwave link budget  (7 GHz, scenario backhaul cfg)
+      b) Traffic demand from Student 2's traffic matrix
+      c) Rain attenuation in Botswana (zone H, 30 mm/h)
 
-    Returns coverage statistics for each scenario.
+    Returns one row per link.
     """
-    thresholds = scenario_cfg.get("thresholds", [-85, -95])
-    kwargs = dict(
-        grid_res      = scenario_cfg.get("grid_res", 100),
-        area_km       = scenario_cfg.get("area_km", 20),
-        tx_power_dbm  = scenario_cfg.get("tx_power_dbm", 46),
-        tx_gain_dbi   = scenario_cfg.get("tx_gain_dbi", 17),
-        rx_gain_dbi   = scenario_cfg.get("rx_gain_dbi", 0),
-        f_mhz         = scenario_cfg.get("f_mhz", 1800),
-        h_base        = scenario_cfg.get("h_base", 35),
-        h_mobile      = scenario_cfg.get("h_mobile", 1.5),
-        system_losses = scenario_cfg.get("system_losses", 2.0),
-    )
+    import math
+    bh_cfg = scenario["backhaul"]
+    sites  = scenario["sites"]
+    bs_list= [s for s in sites if s["type"] == "base_station"]
+    cr1    = next(s for s in sites if s["name"] == "CR-1")
+    cr2    = next(s for s in sites if s["name"] == "CR-2")
 
-    results = {}
+    results = []
+    for bs in bs_list:
+        d_primary = math.hypot(bs["x_km"] - cr1["x_km"], bs["y_km"] - cr1["y_km"])
+        d_backup  = math.hypot(bs["x_km"] - cr2["x_km"], bs["y_km"] - cr2["y_km"])
 
-    # --- Baseline ---
-    xs, ys, g0 = build_coverage_grid(base_sites, **kwargs)
-    results["baseline"] = coverage_statistics(g0, thresholds)
+        # Microwave budget — primary
+        mw_primary = microwave_budget(bh_cfg["frequency_ghz"], d_primary, bh_cfg)
+        mw_backup  = microwave_budget(bh_cfg["frequency_ghz"], d_backup,  bh_cfg)
 
-    # --- Improvement A: 6th site at coverage centroid black-spot ---
-    extra_site  = [(10.0, 3.0)]      # south-centre gap in the 5-site layout
-    sites_6     = base_sites + extra_site
-    _, _, g_6   = build_coverage_grid(sites_6, **kwargs)
-    results["add_6th_site"] = coverage_statistics(g_6, thresholds)
+        # Rain attenuation
+        rain_db    = rain_attenuation_db(d_primary, bh_cfg["frequency_ghz"])
 
-    # --- Improvement B: raise antenna height to 50 m ---
-    kw_tall = {**kwargs, "h_base": 50}
-    _, _, g_tall = build_coverage_grid(base_sites, **kw_tall)
-    results["raise_height_50m"] = coverage_statistics(g_tall, thresholds)
+        # Traffic demand from Student 2
+        row = traffic_matrix[traffic_matrix["site"] == bs["name"]].iloc[0] \
+              if len(traffic_matrix[traffic_matrix["site"] == bs["name"]]) > 0 \
+              else None
 
-    # --- Side-by-side plot ---
+        demand_mbps  = float(row["total_mbps"]) if row is not None else 0.0
+        cap_mbps     = mw_primary["capacity_mbps"]
+        utilisation  = demand_mbps / cap_mbps if cap_mbps > 0 else 0.0
+        link_status  = _link_status(mw_primary["link_margin_db"],
+                                     mw_primary["required_margin"], rain_db)
+
+        results.append({
+            "site":                  bs["name"],
+            "primary_dist_km":       round(d_primary, 2),
+            "backup_dist_km":        round(d_backup, 2),
+            "primary_rx_dbm":        mw_primary["rx_power_dbm"],
+            "primary_margin_db":     mw_primary["link_margin_db"],
+            "primary_status":        mw_primary["status"],
+            "backup_rx_dbm":         mw_backup["rx_power_dbm"],
+            "backup_margin_db":      mw_backup["link_margin_db"],
+            "backup_status":         mw_backup["status"],
+            "rain_attenuation_db":   rain_db,
+            "margin_after_rain_db":  round(mw_primary["link_margin_db"] - rain_db, 1),
+            "demand_mbps":           round(demand_mbps * load_multiplier, 4),
+            "capacity_mbps":         cap_mbps,
+            "link_utilisation":      round(utilisation * load_multiplier, 6),
+            "link_status":           link_status,
+            # Student 4 fields
+            "primary_link":          f"{bs['name']}→CR-1",
+            "backup_link":           f"{bs['name']}→CR-2",
+            "calls_routed_primary":  1 if mw_primary["status"] == "PASS" else 0,
+            "calls_routed_backup":   0 if mw_primary["status"] == "PASS" else 1,
+        })
+    return results
+
+
+def _link_status(margin_db: float, req: float, rain_db: float) -> str:
+    net = margin_db - rain_db
+    if net >= req:
+        return "good"
+    if margin_db >= req:
+        return "marginal"
+    return "poor"
+
+
+# ============================================================
+# 6.  Per-link usage plot  (Student 4 requirement)
+# ============================================================
+
+def plot_link_usage(backhaul_results: list[dict],
+                    scenario: dict,
+                    load_multiplier: float = 1.0,
+                    filename="link_usage.png") -> plt.Figure:
+    """
+    Bar chart showing primary vs backup link utilisation per site,
+    overlaid with capacity limit.  Required by Student 4.
+    """
+    sites     = [r["site"] for r in backhaul_results]
+    demand    = [r["demand_mbps"] for r in backhaul_results]
+    capacity  = [r["capacity_mbps"] for r in backhaul_results]
+    colours   = ["#2ECC71" if r["link_status"] == "good"
+                 else "#F39C12" if r["link_status"] == "marginal"
+                 else "#E74C3C" for r in backhaul_results]
+
+    x = np.arange(len(sites))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+    # Left: demand vs capacity
+    bars = ax1.bar(x, demand, color=colours, width=0.5, label="Demand (Mbps)")
+    ax1.bar(x, capacity, width=0.5, bottom=0, color="none",
+            edgecolor="white", linewidth=1.5, linestyle="--", label="Capacity (Mbps)")
+    ax1.axhline(scenario["qos"]["utilisation_zones"]["safe"] * 100,
+                color="orange", ls="--", lw=1.2, label="Safe zone 70%")
+    for bar, val in zip(bars, demand):
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
+                 f"{val:.2f}", ha="center", va="bottom", fontsize=8, color="white")
+    ax1.set_xticks(x); ax1.set_xticklabels(sites)
+    ax1.set_ylabel("Bandwidth (Mbps)"); ax1.set_title(f"Per-Link Demand vs Capacity (α={load_multiplier})")
+    ax1.legend(fontsize=8); ax1.set_facecolor("#0d1117")
+
+    # Right: utilisation %
+    util_pct = [r["link_utilisation"] * 100 for r in backhaul_results]
+    col2 = ["#2ECC71" if u < 70 else "#F39C12" if u < 90 else "#E74C3C"
+            for u in util_pct]
+    ax2.bar(x, util_pct, color=col2, width=0.5)
+    ax2.axhline(70, color="orange", ls="--", lw=1.5, label="Safe (70%)")
+    ax2.axhline(90, color="red",    ls=":",  lw=1.5, label="Action (90%)")
+    for i, u in enumerate(util_pct):
+        ax2.text(i, u + 0.3, f"{u:.1f}%", ha="center", va="bottom",
+                 fontsize=8, color="white")
+    ax2.set_xticks(x); ax2.set_xticklabels(sites)
+    ax2.set_ylabel("Utilisation (%)"); ax2.set_ylim(0, 105)
+    ax2.set_title("Link Utilisation per BS")
+    ax2.legend(fontsize=8); ax2.set_facecolor("#0d1117")
+
+    for ax in (ax1, ax2):
+        ax.tick_params(colors="white")
+        for spine in ax.spines.values():
+            spine.set_edgecolor("#444")
+        ax.yaxis.label.set_color("white")
+        ax.xaxis.label.set_color("white")
+        ax.title.set_color("white")
+
+    fig.patch.set_facecolor("#0d1117")
+    plt.suptitle("Backhaul Link Usage — Primary Links (BS → CR-1)",
+                 color="white", fontsize=12)
+    plt.tight_layout()
+    path = os.path.join(FIG_DIR, filename)
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    print(f"[wireless] Saved: {path}")
+    return fig
+
+
+# ============================================================
+# 7.  Grade of Service summary
+# ============================================================
+
+def grade_of_service(scenario: dict,
+                     teletraffic_results: dict,
+                     load_multiplier: float = 1.0) -> dict:
+    """
+    Compute GoS metrics for output to Student 4.
+
+    Returns:
+        voice_blocking_prob  — Erlang B result per site
+        video_blocking_prob  — Erlang B for video sessions
+        gos_target           — from scenario
+        gos_met              — bool
+        worst_site           — BS with highest blocking
+    """
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))
+    from teletraffic import erlang_b, dimension_channels
+
+    tc = scenario["traffic"]
+    target_B = tc["voice"]["kpi_blocking_prob"]
+
+    sites = [s["name"] for s in scenario["sites"] if s["type"] == "base_station"]
+    gos_rows = []
+    for site in sites:
+        A_voice = tc["voice"]["offered_load_erl"] * load_multiplier
+        A_video = tc["video"]["offered_load_erl"] * load_multiplier
+        N_voice = dimension_channels(A_voice, target_B)
+        N_video = dimension_channels(A_video, target_B)
+        B_voice = erlang_b(A_voice, N_voice)
+        B_video = erlang_b(A_video, N_video)
+
+        # Primary vs backup — link selection based on margin
+        gos_rows.append({
+            "site":              site,
+            "voice_offered_erl": round(A_voice, 4),
+            "voice_channels_N":  N_voice,
+            "voice_blocking":    round(B_voice, 6),
+            "video_offered_erl": round(A_video, 4),
+            "video_channels_N":  N_video,
+            "video_blocking":    round(B_video, 6),
+            "gos_target":        target_B,
+            "gos_met":           bool(B_voice <= target_B and B_video <= target_B),
+            "link_preference":   "primary",
+        })
+
+    worst = max(gos_rows, key=lambda r: r["voice_blocking"])
+    return {
+        "per_site":      gos_rows,
+        "gos_target":    target_B,
+        "worst_site":    worst["site"],
+        "worst_blocking":round(worst["voice_blocking"], 6),
+        "all_gos_met":   all(r["gos_met"] for r in gos_rows),
+    }
+
+
+# ============================================================
+# 8.  Improvement study
+# ============================================================
+
+def improvement_study(scenario: dict) -> dict:
+    """
+    Before/after: baseline 5 sites vs adding BS6 at south gap.
+    Also tests raising antenna to 40 m.
+    Uses lower grid resolution for speed.
+    """
+    import copy
+
+    def run(sc):
+        xs, ys, g = build_coverage_grid(sc, grid_res=80)
+        return xs, ys, g, coverage_statistics(g, sc)
+
+    xs, ys, g0, s0 = run(scenario)
+
+    # Add BS6
+    sc6 = copy.deepcopy(scenario)
+    sc6["sites"].append({
+        "name": "BS6", "label": "Extra Site South",
+        "type": "base_station",
+        "x_km": 25.0, "y_km": 2.0,
+    })
+    xs, ys, g6, s6 = run(sc6)
+
+    # Raise antenna
+    sc_h = copy.deepcopy(scenario)
+    sc_h["environment"]["base_station_height_m"] = 40.0
+    xs, ys, gh, sh = run(sc_h)
+
+    results = {
+        "baseline":       s0,
+        "add_6th_site":   s6,
+        "raise_height_40m": sh,
+    }
+
+    # Plot
     fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
-    titles   = ["Baseline (5 sites, 35 m)", "6th Site Added", "Antenna Raised to 50 m"]
-    grids    = [g0, g_6, g_tall]
-    all_sites= [base_sites, sites_6, base_sites]
-    cmap     = plt.cm.RdYlGn
-    norm     = mcolors.Normalize(vmin=-120, vmax=-50)
+    titles = ["Baseline (5 sites, 30 m)", "6th Site Added", "Antenna → 40 m"]
+    grids  = [g0, g6, gh]
+    env    = scenario["environment"]
+    thr_od = env["coverage_threshold_outdoor_dbm"]
+    thr_in = env["coverage_threshold_indoor_dbm"]
+    norm   = mcolors.Normalize(vmin=-130, vmax=-50)
 
-    for ax, g, ttl, slist in zip(axes, grids, titles, all_sites):
-        pcm = ax.pcolormesh(xs, ys, g, cmap=cmap, norm=norm, shading="auto")
-        for thr, ls, col in zip(thresholds, ["--", ":"], ["white", "cyan"]):
-            cs = ax.contour(xs, ys, g, levels=[thr],
-                            colors=[col], linewidths=1.8, linestyles=ls)
-            ax.clabel(cs, fmt=f"{thr}", fontsize=7, colors=[col])
-        for (sx, sy) in slist:
-            ax.plot(sx, sy, "^", color="white", markersize=8,
-                    markeredgecolor="black", markeredgewidth=1)
-        ax.set_title(ttl, fontsize=10, pad=6)
+    for ax, g, ttl in zip(axes, grids, titles):
+        ax.pcolormesh(xs, ys, g, cmap="RdYlGn", norm=norm, shading="auto")
+        for thr, ls, col in [(thr_od, "--", "white"), (thr_in, ":", "cyan")]:
+            try:
+                cs = ax.contour(xs, ys, g, levels=[thr],
+                                colors=[col], lw=1.8, linestyles=ls)
+                ax.clabel(cs, fmt=f"{thr}", fontsize=7, colors=[col])
+            except Exception:
+                pass
+        for bs in [s for s in scenario["sites"] if s["type"] == "base_station"]:
+            ax.plot(bs["x_km"], bs["y_km"], "^w", markersize=8,
+                    markeredgecolor="black")
+        ax.set_title(ttl, fontsize=10)
         ax.set_xlabel("East–West (km)", fontsize=9)
     axes[0].set_ylabel("North–South (km)", fontsize=9)
+
+    pcm = axes[-1].pcolormesh(xs, ys, grids[-1], cmap="RdYlGn", norm=norm, shading="auto")
     fig.colorbar(pcm, ax=axes[-1], label="Rx power (dBm)", pad=0.02)
-    fig.suptitle("Coverage Improvement Study", fontsize=13, y=1.01)
+    fig.suptitle("Coverage Improvement Study", fontsize=13)
     plt.tight_layout()
-    path = os.path.join(FIG_DIR, f"{filename_prefix}_study.png")
+    path = os.path.join(FIG_DIR, "improvement_study.png")
     fig.savefig(path, dpi=150, bbox_inches="tight")
     print(f"[wireless] Saved: {path}")
     plt.close(fig)
@@ -413,123 +590,93 @@ def improvement_study(base_sites: list,
     return results
 
 
-# =============================================================================
-# 7.  Microwave backhaul link budget
-# =============================================================================
+# ============================================================
+# 9.  Backbone + backhaul link budget figures
+# ============================================================
 
-def microwave_link_budget(freq_ghz:        float = 7.0,
-                          distance_km:     float = 12.0,
-                          tx_power_dbm:    float = 30.0,
-                          tx_gain_dbi:     float = 34.0,
-                          rx_gain_dbi:     float = 34.0,
-                          system_losses_db:float = 3.0,
-                          fade_margin_db:  float = 20.0,
-                          rx_threshold_dbm:float = -85.0,
-                          filename:        str   = "link_budget.png") -> dict:
+def plot_backhaul_link_budget(scenario: dict,
+                               filename="backhaul_link_budget.png") -> plt.Figure:
     """
-    Full microwave point-to-point link budget calculation.
-    Outputs a results dict and a formatted table figure.
-
-    FSPL formula: 92.45 + 20·log10(f_GHz) + 20·log10(d_km)
+    Table figure with both 7 GHz (BS links) and 13 GHz (backbone) budgets.
+    Includes rain attenuation for Botswana zone H.
     """
-    fspl_db = 92.45 + 20 * np.log10(freq_ghz) + 20 * np.log10(distance_km)
-    eirp_dbm = tx_power_dbm + tx_gain_dbi
-    rx_power_dbm = eirp_dbm + rx_gain_dbi - fspl_db - system_losses_db
-    link_margin_db = rx_power_dbm - rx_threshold_dbm
-    available_fade = link_margin_db            # fade margin available
-    status = "PASS" if link_margin_db >= fade_margin_db else "FAIL"
+    import math
+    bh  = scenario["backhaul"]
+    bb  = scenario["backbone_13ghz"]
+    sites = scenario["sites"]
+    cr1   = next(s for s in sites if s["name"] == "CR-1")
+    cr2   = next(s for s in sites if s["name"] == "CR-2")
 
-    budget = {
-        "freq_ghz":           freq_ghz,
-        "distance_km":        distance_km,
-        "tx_power_dbm":       tx_power_dbm,
-        "tx_gain_dbi":        tx_gain_dbi,
-        "rx_gain_dbi":        rx_gain_dbi,
-        "eirp_dbm":           round(eirp_dbm, 1),
-        "fspl_db":            round(fspl_db, 1),
-        "system_losses_db":   system_losses_db,
-        "rx_power_dbm":       round(rx_power_dbm, 1),
-        "rx_threshold_dbm":   rx_threshold_dbm,
-        "link_margin_db":     round(link_margin_db, 1),
-        "required_fade_margin": fade_margin_db,
-        "status":             status,
-    }
+    # Representative longest BS link
+    bs5 = next(s for s in sites if s["name"] == "BS5")
+    d_bs = math.hypot(bs5["x_km"] - cr1["x_km"], bs5["y_km"] - cr1["y_km"])
+    d_bb = math.hypot(cr1["x_km"] - cr2["x_km"], cr1["y_km"] - cr2["y_km"])
 
-    # ── plot table ──────────────────────────────────────────────────────────
-    rows = [
-        ["Parameter",                "Symbol",    "Value",                    "Unit",  ""],
-        ["Frequency",                "f",         f"{freq_ghz:.1f}",          "GHz",   ""],
-        ["Link distance",            "d",         f"{distance_km:.1f}",       "km",    ""],
-        ["Transmit power",           "Ptx",       f"{tx_power_dbm:.1f}",      "dBm",   ""],
-        ["Tx antenna gain",          "Gtx",       f"{tx_gain_dbi:.1f}",       "dBi",   ""],
-        ["EIRP",                     "EIRP",      f"{eirp_dbm:.1f}",          "dBm",   ""],
-        ["Free-space path loss",     "FSPL",      f"{fspl_db:.1f}",           "dB",    ""],
-        ["System losses",            "Lsys",      f"{system_losses_db:.1f}",  "dB",    ""],
-        ["Rx antenna gain",          "Grx",       f"{rx_gain_dbi:.1f}",       "dBi",   ""],
-        ["Received power",           "Prx",       f"{rx_power_dbm:.1f}",      "dBm",   ""],
-        ["Rx threshold",             "Smin",      f"{rx_threshold_dbm:.1f}",  "dBm",   ""],
-        ["Link margin",              "M",         f"{link_margin_db:.1f}",    "dB",    ""],
-        ["Required fade margin",     "Mreq",      f"{fade_margin_db:.1f}",    "dB",    ""],
-        ["Link status",              "—",         status,                     "—",     status],
-    ]
+    mw_bs = microwave_budget(bh["frequency_ghz"], d_bs, bh)
+    mw_bb = microwave_budget(bb["frequency_ghz"], d_bb, bb)
+    rain_bs = rain_attenuation_db(d_bs, bh["frequency_ghz"])
+    rain_bb = rain_attenuation_db(d_bb, bb["frequency_ghz"])
 
-    fig, ax = plt.subplots(figsize=(9, 5))
-    ax.axis("off")
-    tbl = ax.table(
-        cellText  = [[r[0], r[1], r[2], r[3]] for r in rows[1:]],
-        colLabels = rows[0][:4],
-        loc="center",
-        cellLoc="center",
-    )
-    tbl.auto_set_font_size(False)
-    tbl.set_fontsize(9)
-    tbl.scale(1, 1.5)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    for ax, mw, rain, title in [
+        (ax1, mw_bs, rain_bs, f"BS Link (7 GHz, {d_bs:.1f} km) — BS5→CR-1"),
+        (ax2, mw_bb, rain_bb, f"Backbone (13 GHz, {d_bb:.1f} km) — CR-1↔CR-2"),
+    ]:
+        rows = [
+            ["Frequency",            f"{mw['frequency_ghz']:.0f} GHz"],
+            ["Distance",             f"{mw['distance_km']:.1f} km"],
+            ["FSPL",                 f"{mw['fspl_db']:.1f} dB"],
+            ["EIRP",                 f"{mw['eirp_dbm']:.1f} dBm"],
+            ["Rx Power",             f"{mw['rx_power_dbm']:.1f} dBm"],
+            ["Link Margin",          f"{mw['link_margin_db']:.1f} dB"],
+            ["Required Margin",      f"{mw['required_margin']:.0f} dB"],
+            ["Rain Att. (30 mm/h)",  f"{rain:.2f} dB"],
+            ["Net Margin (rain)",    f"{mw['link_margin_db']-rain:.1f} dB"],
+            ["Capacity",             f"{mw['capacity_mbps']} Mbps"],
+            ["Status",               mw["status"]],
+        ]
+        ax.axis("off")
+        tbl = ax.table(cellText=rows, colLabels=["Parameter", "Value"],
+                       loc="center", cellLoc="center")
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(10)
+        tbl.scale(1, 1.7)
+        # Style header
+        for j in range(2):
+            tbl[0, j].set_facecolor("#2C3E50")
+            tbl[0, j].set_text_props(color="white", fontweight="bold")
+        # Colour status row
+        status_row = len(rows)
+        for j in range(2):
+            colour = "#27AE60" if mw["status"] == "PASS" else "#E74C3C"
+            tbl[status_row, j].set_facecolor(colour)
+            tbl[status_row, j].set_text_props(color="white", fontweight="bold")
+        ax.set_title(title, fontsize=10, pad=10)
 
-    # colour header and status row
-    header_colour = "#2C3E50"
-    for j in range(4):
-        tbl[0, j].set_facecolor(header_colour)
-        tbl[0, j].set_text_props(color="white", fontweight="bold")
-
-    # colour pass/fail row
-    for j in range(4):
-        tbl[len(rows) - 1, j].set_facecolor(
-            "#27AE60" if status == "PASS" else "#E74C3C")
-        tbl[len(rows) - 1, j].set_text_props(color="white", fontweight="bold")
-
-    ax.set_title("Microwave Backhaul Link Budget — 7 GHz, 12 km hop",
-                 fontsize=11, pad=12)
+    plt.suptitle("Microwave Backhaul Link Budget — District Telehealth Network",
+                 fontsize=12, y=1.02)
     plt.tight_layout()
     path = os.path.join(FIG_DIR, filename)
     fig.savefig(path, dpi=180, bbox_inches="tight")
     print(f"[wireless] Saved: {path}")
-    plt.close(fig)
-
-    return budget
+    return fig
 
 
-# =============================================================================
-# 8.  JSON export (numpy-safe)
-# =============================================================================
+# ============================================================
+# 10. JSON export (numpy-safe)
+# ============================================================
 
-class _NumpySafeEncoder(json.JSONEncoder):
-    """Converts numpy scalars to native Python types before JSON serialisation."""
+class _Safe(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.bool_):
-            return bool(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
+        if isinstance(obj, (np.integer,)):   return int(obj)
+        if isinstance(obj, (np.floating,)):  return float(obj)
+        if isinstance(obj, (np.bool_,)):     return bool(obj)
+        if isinstance(obj, np.ndarray):      return obj.tolist()
         return super().default(obj)
 
-
-def export_results(data: dict, filename: str = "wireless_results.json") -> str:
-    """Serialise results dict to JSON, handling numpy types correctly."""
+def export_results(data: dict, filename="wireless_results.json") -> str:
     path = os.path.join(RES_DIR, filename)
     with open(path, "w") as f:
-        json.dump(data, f, indent=2, cls=_NumpySafeEncoder)
+        json.dump(data, f, indent=2, cls=_Safe)
     print(f"[wireless] Exported: {path}")
     return path
