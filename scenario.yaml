@@ -1,0 +1,89 @@
+network:
+  sites:
+    - name: CR-1
+      type: core
+      x: 25
+      y: 25
+
+    - name: CR-2
+      type: core
+      x: 30
+      y: 25
+
+    - name: BS1
+      type: base_station
+      x: 10
+      y: 10
+
+    - name: BS2
+      type: base_station
+      x: 40
+      y: 10
+
+    - name: BS3
+      type: base_station
+      x: 10
+      y: 40
+
+    - name: BS4
+      type: base_station
+      x: 40
+      y: 40
+
+    - name: BS5
+      type: base_station
+      x: 25
+      y: 5
+
+  links:
+    - source: BS1
+      target: CR-1
+      capacity: 100
+      delay: 5
+
+    - source: BS2
+      target: CR-1
+      capacity: 100
+      delay: 5
+
+    - source: BS3
+      target: CR-2
+      capacity: 100
+      delay: 5
+
+    - source: BS4
+      target: CR-2
+      capacity: 100
+      delay: 5
+
+    - source: BS5
+      target: CR-1
+      capacity: 100
+      delay: 5
+
+    - source: CR-1
+      target: CR-2
+      capacity: 1000
+      delay: 2
+
+traffic:
+  telemetry:
+    lambda: 30
+    holding_time: 60
+
+  voice:
+    lambda: 15
+    holding_time: 180
+
+  video:
+    lambda: 8
+    holding_time: 300
+
+environment:
+  frequency: 1800
+  base_height: 30
+  mobile_height: 1.5
+
+simulation:
+  seed: 42
+  load_multiplier: 1.0
