@@ -17,13 +17,15 @@ sites:
   - {name: BS5,  label: Clinic South-East,       type: base_station, x_km: 42.0, y_km: 10.0}
 
 links:
-  # Core backbone — fibre primary + microwave backup
-  - {from: CR-1, to: CR-2, capacity_mbps: 1000, delay_ms: 0.5, type: fibre,     role: primary, weight: 1}
-  - {from: CR-2, to: CR-1, capacity_mbps: 1000, delay_ms: 0.5, type: fibre,     role: primary, weight: 1}
-  - {from: CR-1, to: CR-2, capacity_mbps:  200, delay_ms: 0.5, type: microwave, role: backup,  weight: 10}
-  - {from: CR-2, to: CR-1, capacity_mbps:  200, delay_ms: 0.5, type: microwave, role: backup,  weight: 10}
+  # Core backbone — 13 GHz microwave primary + LTE priority bearer backup
+  # REMOVED: fibre primary (replaced by 13 GHz microwave — no civil works needed)
+  # REMOVED: 7 GHz microwave backup (replaced by LTE — independent failure mode)
+  - {from: CR-1, to: CR-2, capacity_mbps: 500, delay_ms:  0.5, type: microwave_13ghz, role: primary, weight:  1, frequency_ghz: 13.0}
+  - {from: CR-2, to: CR-1, capacity_mbps: 500, delay_ms:  0.5, type: microwave_13ghz, role: primary, weight:  1, frequency_ghz: 13.0}
+  - {from: CR-1, to: CR-2, capacity_mbps:  30, delay_ms: 45.0, type: lte_priority,    role: backup,  weight: 10, frequency_mhz: 1800, qci_class: 65}
+  - {from: CR-2, to: CR-1, capacity_mbps:  30, delay_ms: 45.0, type: lte_priority,    role: backup,  weight: 10, frequency_mhz: 1800, qci_class: 65}
 
-  # CR-1 primary links to all base stations
+  # CR-1 primary links to all base stations (7 GHz microwave — unchanged)
   - {from: CR-1, to: BS1, capacity_mbps: 100, delay_ms:  8.0, type: microwave, role: primary, weight: 1}
   - {from: BS1, to: CR-1, capacity_mbps: 100, delay_ms:  8.0, type: microwave, role: primary, weight: 1}
   - {from: CR-1, to: BS2, capacity_mbps: 100, delay_ms:  8.0, type: microwave, role: primary, weight: 1}
@@ -35,7 +37,7 @@ links:
   - {from: CR-1, to: BS5, capacity_mbps: 100, delay_ms:  9.0, type: microwave, role: primary, weight: 1}
   - {from: BS5, to: CR-1, capacity_mbps: 100, delay_ms:  9.0, type: microwave, role: primary, weight: 1}
 
-  # CR-2 backup links to all base stations (Topology 5 dual-homing)
+  # CR-2 backup links to all base stations (Topology 5 dual-homing — unchanged)
   - {from: CR-2, to: BS1, capacity_mbps: 100, delay_ms: 13.0, type: microwave, role: backup, weight: 5}
   - {from: BS1, to: CR-2, capacity_mbps: 100, delay_ms: 13.0, type: microwave, role: backup, weight: 5}
   - {from: CR-2, to: BS2, capacity_mbps: 100, delay_ms: 24.0, type: microwave, role: backup, weight: 5}
@@ -76,6 +78,26 @@ backhaul:
   receiver_threshold_dbm: -85.0
   min_fade_margin_db: 20.0
   rainfall_zone: botswana
+
+backbone_13ghz:
+  frequency_ghz: 13.0
+  link_distance_km: 5.8
+  tx_power_dbm: 23.0
+  tx_antenna_gain_dbi: 38.0
+  rx_antenna_gain_dbi: 38.0
+  misc_losses_db: 2.0
+  receiver_threshold_dbm: -83.0
+  min_fade_margin_db: 20.0
+  rainfall_zone: botswana
+
+lte_backup:
+  operator: BTC_Botswana
+  frequency_mhz: 1800
+  qci_class: 65
+  guaranteed_bitrate_mbps: 10
+  max_bitrate_mbps: 30
+  delay_ms: 45.0
+  failure_mode: bts_outage_or_congestion
 
 qos:
   scheduler: wfq_with_priority
