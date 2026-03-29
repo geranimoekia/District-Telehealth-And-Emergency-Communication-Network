@@ -113,7 +113,17 @@ def _quality(margin_db: float) -> str:
 
 
 def _coverage_radius(scenario: dict) -> float:
-    """Binary-search for the distance where received power = outdoor threshold."""
+    """
+    Binary-search for the distance from a BS where received power = outdoor threshold.
+
+    This is the PLANNING coverage radius — the distance at which the signal
+    exactly meets the minimum outdoor threshold (-90 dBm from scenario.yaml).
+    Shadow fading and body loss are NOT subtracted here; they are accounted
+    for separately as a link margin requirement in site_link_budget_table().
+
+    Using thr_od only (not thr + sfm + bl) gives the correct cell radius that
+    the network is designed to cover at the stated threshold.
+    """
     env     = scenario["environment"]
     f       = env["carrier_frequency_mhz"]
     hb      = env["base_station_height_m"]
@@ -122,10 +132,10 @@ def _coverage_radius(scenario: dict) -> float:
     tx_gain = 17.0
     feeder  = 2.0
     eirp    = ptx + tx_gain - feeder
-    thr     = env["coverage_threshold_outdoor_dbm"] + env["shadow_fading_margin_db"]
+    thr     = env["coverage_threshold_outdoor_dbm"]   # raw threshold only
 
     lo, hi = 0.05, 60.0
-    for _ in range(60):
+    for _ in range(80):
         mid = (lo + hi) / 2
         prx = eirp - cost231_hata(mid, f, hb, hm)
         if prx > thr:
@@ -144,23 +154,56 @@ def site_link_budget_table(scenario: dict) -> list[dict]:
     Returns one row per BS site with the required fields from the screenshot:
       site_id, received_signal_dbm, path_loss_db, link_margin_db,
       coverage_radius_km, link_quality
-    """
-    import math
-    sites  = scenario["sites"]
-    bs_list = [s for s in sites if s["type"] == "base_station"]
-    cr1     = next(s for s in sites if s["name"] == "CR-1")
 
+    Budget is computed at a TYPICAL SERVICE DISTANCE of 1 km from the BS
+    (representing a UE within the clinic/hospital service area), not at the
+    BS→CR-1 backhaul hop distance.
+
+    link_quality is assessed relative to the outdoor threshold:
+      good     — link_margin ≥ shadow fading margin + body loss (11 dB here)
+      marginal — link_margin ≥ 0 dB (on threshold, no fade headroom)
+      poor     — link_margin < 0 dB (below threshold)
+    """
+    env     = scenario["environment"]
+    f_mhz   = env["carrier_frequency_mhz"]
+    hb      = env["base_station_height_m"]
+    hm      = env["mobile_height_m"]
+    ptx     = env["tx_power_dbm"]
+    sfm     = env["shadow_fading_margin_db"]
+    bl      = env["body_loss_db"]
+    thr_od  = env["coverage_threshold_outdoor_dbm"]
+    tx_gain = 17.0
+    feeder  = 2.0
+    eirp    = ptx + tx_gain - feeder
+
+    # Coverage radius at raw threshold (planning cell radius)
+    r_km = _coverage_radius(scenario)
+
+    # Typical service distance: 1 km from BS (clinic/UE near the site)
+    d_service = 1.0
+
+    bs_list = [s for s in scenario["sites"] if s["type"] == "base_station"]
     rows = []
     for bs in bs_list:
-        d = math.hypot(bs["x_km"] - cr1["x_km"], bs["y_km"] - cr1["y_km"])
-        lb = compute_link_budget(d, scenario)
+        pl_svc   = cost231_hata(d_service, f_mhz, hb, hm, cm=0.0)
+        prx_svc  = eirp - pl_svc
+        margin   = prx_svc - thr_od        # headroom above outdoor threshold
+
+        required_margin = sfm + bl         # 8 + 3 = 11 dB required to absorb fading
+        if margin >= required_margin:
+            quality = "good"
+        elif margin >= 0:
+            quality = "marginal"
+        else:
+            quality = "poor"
+
         rows.append({
             "site_id":             bs["name"],
-            "received_signal_dbm": lb["received_signal_dbm"],
-            "path_loss_db":        lb["path_loss_db"],
-            "link_margin_db":      lb["link_margin_db"],
-            "coverage_radius_km":  lb["coverage_radius_km"],
-            "link_quality":        lb["link_quality"],
+            "received_signal_dbm": round(prx_svc, 2),
+            "path_loss_db":        round(pl_svc, 2),
+            "link_margin_db":      round(margin, 2),
+            "coverage_radius_km":  round(r_km, 3),
+            "link_quality":        quality,
         })
     return rows
 
