@@ -3,96 +3,37 @@ propagation.py
 ==============
 Student 3 — Wireless Planning Lead | TELE 527 Group 1
 
-Implements the Okumura-Hata path loss model for urban/suburban macro cells
-at 1800 MHz, as required by the District Telehealth scenario.
-
-Reference:
-  Hata, M. (1980). Empirical formula for propagation loss in land mobile radio
-  services. IEEE Trans. Vehicular Technology, 29(3), 317–325.
-
-Usage:
-  from propagation import okumura_hata_urban, received_power_dbm, free_space_loss
+Propagation models aligned with scenario.yaml:
+  - District size: 50 km
+  - Carrier: 1800 MHz
+  - TX power: 43 dBm
+  - Terrain: suburban_rural  → COST 231 Hata with cm=0
+  - Shadow fading margin: 8 dB
+  - Body loss: 3 dB
+  - Indoor penetration loss: 10 dB
 """
 
 import numpy as np
 
 
 # ---------------------------------------------------------------------------
-# Core propagation functions
+# COST 231 Hata — primary model
 # ---------------------------------------------------------------------------
 
-def okumura_hata_urban(d_km: float,
-                       f_mhz: float = 1800,
-                       h_base: float = 35,
-                       h_mobile: float = 1.5) -> float:
+def cost231_hata(d_km: float,
+                 f_mhz: float = 1800,
+                 h_base: float = 30,
+                 h_mobile: float = 1.5,
+                 cm: float = 0.0) -> float:
     """
-    Okumura-Hata path loss — urban large city correction.
-
-    Valid range: 150–1500 MHz (extended to 1800 MHz with COST 231 correction)
-    Distance   : 1–20 km
-    h_base     : 30–200 m
-    h_mobile   : 1–10 m
-
-    Parameters
-    ----------
-    d_km     : link distance in km (clipped to 0.05 km minimum to avoid -inf)
-    f_mhz    : carrier frequency in MHz
-    h_base   : base-station antenna height in metres
-    h_mobile : mobile/CPE antenna height in metres
-
-    Returns
-    -------
-    Path loss in dB (positive value)
-    """
-    d_km = max(float(d_km), 0.05)   # guard against zero distance
-
-    # Mobile-station height correction factor (large city, f ≥ 300 MHz)
-    a_hm = (1.1 * np.log10(f_mhz) - 0.7) * h_mobile \
-           - (1.56 * np.log10(f_mhz) - 0.8)
-
-    # Okumura-Hata urban median path loss
-    L = (69.55
-         + 26.16 * np.log10(f_mhz)
-         - 13.82 * np.log10(h_base)
-         - a_hm
-         + (44.9 - 6.55 * np.log10(h_base)) * np.log10(d_km))
-    return float(L)
-
-
-def okumura_hata_suburban(d_km: float,
-                          f_mhz: float = 1800,
-                          h_base: float = 35,
-                          h_mobile: float = 1.5) -> float:
-    """
-    Okumura-Hata suburban path loss correction.
-    Reduces urban path loss for open/quasi-open areas typical of a district.
-    """
-    L_urban = okumura_hata_urban(d_km, f_mhz, h_base, h_mobile)
-    K = 2 * (np.log10(f_mhz / 28)) ** 2 + 5.4
-    return float(L_urban - K)
-
-
-def cost231_extension(d_km: float,
-                      f_mhz: float = 1800,
-                      h_base: float = 35,
-                      h_mobile: float = 1.5,
-                      cm: float = 0) -> float:
-    """
-    COST 231 Hata model — extends Okumura-Hata to 1500–2000 MHz.
-
-    cm = 0 dB  for medium/small cities (district towns)
-    cm = 3 dB  for metropolitan centres
-
-    Reference:
-      COST Action 231 (1999). Digital mobile radio towards future generation
-      systems. European Commission.
+    COST 231 extension to Okumura-Hata. Valid 1500–2000 MHz.
+    cm = 0 dB for medium/small cities (district scenario).
+    cm = 3 dB for metropolitan centres.
     """
     d_km = max(float(d_km), 0.05)
     a_hm = (1.1 * np.log10(f_mhz) - 0.7) * h_mobile \
-           - (1.56 * np.log10(f_mhz) - 0.8)
-
-    L = (46.3
-         + 33.9 * np.log10(f_mhz)
+         - (1.56 * np.log10(f_mhz) - 0.8)
+    L = (46.3 + 33.9 * np.log10(f_mhz)
          - 13.82 * np.log10(h_base)
          - a_hm
          + (44.9 - 6.55 * np.log10(h_base)) * np.log10(d_km)
@@ -101,93 +42,186 @@ def cost231_extension(d_km: float,
 
 
 def free_space_loss(d_km: float, f_mhz: float = 1800) -> float:
-    """
-    Free-space path loss (FSPL) for reference comparison.
-
-    FSPL (dB) = 20*log10(d) + 20*log10(f) + 32.45
-    """
     d_km = max(float(d_km), 0.05)
     return 20 * np.log10(d_km) + 20 * np.log10(f_mhz) + 32.45
 
 
-def received_power_dbm(tx_power_dbm: float,
-                       tx_gain_dbi: float,
-                       rx_gain_dbi: float,
-                       path_loss_db: float,
-                       system_losses_db: float = 2.0) -> float:
-    """
-    Link budget received power.
-
-    Prx = Ptx + Gtx + Grx − PL − Lsys
-
-    Parameters
-    ----------
-    tx_power_dbm    : transmit power in dBm
-    tx_gain_dbi     : transmit antenna gain in dBi
-    rx_gain_dbi     : receive antenna gain in dBi
-    path_loss_db    : path loss (positive, in dB)
-    system_losses_db: feeder, connector, body losses (default 2 dB)
-
-    Returns
-    -------
-    Received power in dBm
-    """
-    return tx_power_dbm + tx_gain_dbi + rx_gain_dbi \
-           - path_loss_db - system_losses_db
+def okumura_hata_urban(d_km: float, f_mhz: float = 1800,
+                       h_base: float = 30, h_mobile: float = 1.5) -> float:
+    d_km = max(float(d_km), 0.05)
+    a_hm = (1.1 * np.log10(f_mhz) - 0.7) * h_mobile \
+         - (1.56 * np.log10(f_mhz) - 0.8)
+    return float(69.55 + 26.16 * np.log10(f_mhz)
+                 - 13.82 * np.log10(h_base) - a_hm
+                 + (44.9 - 6.55 * np.log10(h_base)) * np.log10(d_km))
 
 
 # ---------------------------------------------------------------------------
-# Path loss distance sweep — used for link budget tables
+# Full link budget computation
 # ---------------------------------------------------------------------------
 
-def path_loss_vs_distance(distances_km: list,
-                          f_mhz: float = 1800,
-                          h_base: float = 35,
-                          h_mobile: float = 1.5,
-                          model: str = "cost231") -> dict:
+def compute_link_budget(d_km: float, scenario: dict) -> dict:
     """
-    Compute path loss at a list of distances.
+    Full downlink budget using scenario.yaml environment parameters.
 
-    Parameters
-    ----------
-    distances_km : list of distances in km
-    model        : "okumura_hata" | "suburban" | "cost231" | "fspl"
-
-    Returns
-    -------
-    dict with 'distances' and 'path_loss' lists
+    Returns dict with all link budget line items.
     """
-    fn_map = {
-        "okumura_hata": okumura_hata_urban,
-        "suburban":     okumura_hata_suburban,
-        "cost231":      cost231_extension,
-        "fspl":         free_space_loss,
+    env = scenario["environment"]
+    f   = env["carrier_frequency_mhz"]
+    hb  = env["base_station_height_m"]
+    hm  = env["mobile_height_m"]
+    ptx = env["tx_power_dbm"]
+    sfm = env["shadow_fading_margin_db"]
+    bl  = env["body_loss_db"]
+    ipl = env["indoor_penetration_loss_db"]
+
+    # Gains — sector antenna 17 dBi TX, 0 dBi RX (UE)
+    tx_gain_dbi = 17.0
+    rx_gain_dbi = 0.0
+    feeder_loss  = 2.0   # cable + connector
+
+    pl     = cost231_hata(d_km, f, hb, hm, cm=0.0)
+    eirp   = ptx + tx_gain_dbi - feeder_loss
+    prx    = eirp + rx_gain_dbi - pl
+    margin = prx - env["coverage_threshold_outdoor_dbm"] - sfm - bl
+
+    return {
+        "distance_km":         round(d_km, 3),
+        "path_loss_db":        round(pl, 2),
+        "tx_power_dbm":        ptx,
+        "tx_gain_dbi":         tx_gain_dbi,
+        "feeder_loss_db":      feeder_loss,
+        "eirp_dbm":            round(eirp, 2),
+        "rx_gain_dbi":         rx_gain_dbi,
+        "received_signal_dbm": round(prx, 2),
+        "shadow_fading_margin":sfm,
+        "body_loss_db":        bl,
+        "threshold_outdoor_dbm": env["coverage_threshold_outdoor_dbm"],
+        "threshold_indoor_dbm":  env["coverage_threshold_indoor_dbm"],
+        "link_margin_db":      round(margin, 2),
+        "coverage_radius_km":  round(_coverage_radius(scenario), 3),
+        "link_quality":        _quality(margin),
     }
-    fn = fn_map.get(model, cost231_extension)
-    losses = [fn(d, f_mhz, h_base, h_mobile) if model not in ("fspl",)
-              else free_space_loss(d, f_mhz)
-              for d in distances_km]
-    return {"distances_km": distances_km, "path_loss_db": losses}
+
+
+def _quality(margin_db: float) -> str:
+    if margin_db >= 10:
+        return "good"
+    if margin_db >= 3:
+        return "marginal"
+    return "poor"
+
+
+def _coverage_radius(scenario: dict) -> float:
+    """Binary-search for the distance where received power = outdoor threshold."""
+    env     = scenario["environment"]
+    f       = env["carrier_frequency_mhz"]
+    hb      = env["base_station_height_m"]
+    hm      = env["mobile_height_m"]
+    ptx     = env["tx_power_dbm"]
+    tx_gain = 17.0
+    feeder  = 2.0
+    eirp    = ptx + tx_gain - feeder
+    thr     = env["coverage_threshold_outdoor_dbm"] + env["shadow_fading_margin_db"]
+
+    lo, hi = 0.05, 60.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        prx = eirp - cost231_hata(mid, f, hb, hm)
+        if prx > thr:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
 
 
 # ---------------------------------------------------------------------------
-# Quick self-test
+# Per-site link budget table (Student 4 interface + screenshot requirement)
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    print("=== Propagation Model Self-Test ===\n")
-    test_distances = [0.5, 1, 2, 5, 10, 15, 20]
-    print(f"{'Distance (km)':<16} {'FSPL (dB)':<12} {'OH Urban (dB)':<16} {'COST231 (dB)':<14}")
-    print("-" * 60)
-    for d in test_distances:
-        fspl = free_space_loss(d)
-        oh   = okumura_hata_urban(d)
-        c231 = cost231_extension(d)
-        print(f"{d:<16.1f} {fspl:<12.1f} {oh:<16.1f} {c231:<14.1f}")
+def site_link_budget_table(scenario: dict) -> list[dict]:
+    """
+    Returns one row per BS site with the required fields from the screenshot:
+      site_id, received_signal_dbm, path_loss_db, link_margin_db,
+      coverage_radius_km, link_quality
+    """
+    import math
+    sites  = scenario["sites"]
+    bs_list = [s for s in sites if s["type"] == "base_station"]
+    cr1     = next(s for s in sites if s["name"] == "CR-1")
 
-    print("\nReceived power at 5 km:")
-    pl = cost231_extension(5)
-    rp = received_power_dbm(46, 17, 0, pl)
-    print(f"  Path loss : {pl:.1f} dB")
-    print(f"  Rx power  : {rp:.1f} dBm")
-    print(f"  {'PASS' if rp > -95 else 'FAIL'} — threshold −95 dBm")
+    rows = []
+    for bs in bs_list:
+        d = math.hypot(bs["x_km"] - cr1["x_km"], bs["y_km"] - cr1["y_km"])
+        lb = compute_link_budget(d, scenario)
+        rows.append({
+            "site_id":             bs["name"],
+            "received_signal_dbm": lb["received_signal_dbm"],
+            "path_loss_db":        lb["path_loss_db"],
+            "link_margin_db":      lb["link_margin_db"],
+            "coverage_radius_km":  lb["coverage_radius_km"],
+            "link_quality":        lb["link_quality"],
+        })
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Microwave backhaul link budget (7 GHz BS→CR-1 and 13 GHz backbone)
+# ---------------------------------------------------------------------------
+
+def microwave_budget(freq_ghz: float, dist_km: float, cfg: dict) -> dict:
+    """Compute point-to-point MW link budget from a config dict."""
+    fspl   = 92.45 + 20*np.log10(freq_ghz) + 20*np.log10(dist_km)
+    eirp   = cfg["tx_power_dbm"] + cfg["tx_antenna_gain_dbi"] - cfg["misc_losses_db"]
+    prx    = eirp + cfg["rx_antenna_gain_dbi"] - fspl
+    margin = prx - cfg["receiver_threshold_dbm"]
+    status = "PASS" if margin >= cfg["min_fade_margin_db"] else "FAIL"
+    capacity_mbps = _mw_capacity(freq_ghz, margin)
+    return {
+        "frequency_ghz":    freq_ghz,
+        "distance_km":      dist_km,
+        "fspl_db":          round(fspl, 1),
+        "eirp_dbm":         round(eirp, 1),
+        "rx_power_dbm":     round(prx, 1),
+        "link_margin_db":   round(margin, 1),
+        "required_margin":  cfg["min_fade_margin_db"],
+        "status":           status,
+        "capacity_mbps":    capacity_mbps,
+    }
+
+
+def _mw_capacity(freq_ghz: float, margin_db: float) -> int:
+    """Rough capacity estimate based on modulation achievable at margin."""
+    if margin_db >= 30:
+        return 100 if freq_ghz < 10 else 400
+    if margin_db >= 20:
+        return 50  if freq_ghz < 10 else 200
+    if margin_db >= 10:
+        return 20  if freq_ghz < 10 else 100
+    return 10
+
+
+# ---------------------------------------------------------------------------
+# Rainfall attenuation (ITU-R P.838-3) — Botswana zone H
+# ---------------------------------------------------------------------------
+
+def rain_attenuation_db(d_km: float, freq_ghz: float,
+                         rain_rate_mm_h: float = 30.0) -> float:
+    """
+    ITU-R P.838-3 specific attenuation, zone H (30 mm/h typical peak).
+    gamma_R = k * R^alpha  [dB/km]
+    """
+    # Coefficients for horizontal polarisation at common frequencies
+    _table = {
+        7:  (0.00301, 1.332),
+        13: (0.0168,  1.217),
+        15: (0.0335,  1.128),
+        18: (0.0688,  1.061),
+        23: (0.148,   1.000),
+    }
+    # Linear interpolation to nearest
+    freqs = sorted(_table.keys())
+    f0 = min(freqs, key=lambda x: abs(x - freq_ghz))
+    k, alpha = _table[f0]
+    gamma = k * (rain_rate_mm_h ** alpha)
+    return round(gamma * d_km, 2)

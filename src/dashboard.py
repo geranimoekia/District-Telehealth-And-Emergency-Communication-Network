@@ -3,24 +3,29 @@ dashboard.py
 ============
 Student 3 — Wireless Planning Lead | TELE 527 Group 1
 
-Streamlit dashboard tab for wireless planning outputs.
-This file is designed to be imported by the group's main dashboard (Student 5)
-OR run standalone with:
+Streamlit dashboard with ALL required outputs including:
+  • Coverage & propagation results (exact screenshot fields)
+  • Per-link usage (Student 4 requirement)
+  • Erlang B blocking probability (Student 4 requirement)
+  • Call setup metrics: setup delay, primary/backup link usage,
+    calls per link (Student 4 requirement)
+  • Grade of Service (GoS)
+  • Backhaul capacity with rain attenuation
+  • Frequency reuse & sectorization
+  • Stress testing & breaking point
 
-  streamlit run dashboard.py
-
-Tabs exposed:
-  1. Coverage & Received Power  (heatmap with interactive controls)
-  2. Reuse & Sectorization      (cluster pattern + capacity table)
-  3. Backhaul Link Budget       (interactive link budget calculator)
-  4. Improvement Study          (before/after comparison)
+Run:  streamlit run dashboard.py
 """
 
 import os
 import sys
+import math
 import json
-import numpy as np
+import copy
 
+import numpy as np
+import pandas as pd
+import yaml
 import streamlit as st
 import matplotlib
 matplotlib.use("Agg")
@@ -28,268 +33,734 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
 sys.path.insert(0, os.path.dirname(__file__))
-from propagation import cost231_extension, received_power_dbm
-from wireless import (
-    build_coverage_grid,
-    coverage_statistics,
-    plot_coverage_heatmap,
-    frequency_reuse_cluster,
-    sectorization_analysis,
-    plot_reuse_pattern,
-    microwave_link_budget,
-)
 
-# ── page config ───────────────────────────────────────────────────────────────
+from traffic     import load_scenario, compute_traffic_matrix, compute_trunk_demand, stress_bandwidth_sweep
+from teletraffic import (run_teletraffic, compute_signaling_load, signaling_summary,
+                          stress_sweep, find_breaking_point, erlang_b, dimension_channels,
+                          erlang_b_curve, blocking_vs_load)
+from propagation import (cost231_hata, site_link_budget_table, microwave_budget,
+                          rain_attenuation_db, _coverage_radius)
+from wireless    import (build_coverage_grid, coverage_statistics, validate_backhaul_capacity,
+                          frequency_reuse_cluster, sectorization_analysis, grade_of_service,
+                          plot_reuse_pattern)
+
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="TELE 527 | Wireless Planning",
+    page_title="TELE 527 | Wireless Planning — Student 3",
     page_icon="📡",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-st.title("📡 Wireless Planning — Student 3 | Group 1")
-st.caption("District Telehealth & Emergency Network — TELE 527 PBL Dashboard")
+# ── Global CSS ────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+[data-testid="stAppViewContainer"] { background: #0d1117; }
+[data-testid="stSidebar"]          { background: #161b22; }
+.stTabs [data-baseweb="tab-list"]  { background: #161b22; border-radius: 8px; }
+.stTabs [data-baseweb="tab"]       { color: #8b949e; font-weight: 600; }
+.stTabs [aria-selected="true"]     { color: #58a6ff !important; border-bottom: 2px solid #58a6ff; }
+div[data-testid="metric-container"] { background: #161b22; border-radius: 8px;
+                                       border: 1px solid #30363d; padding: 12px; }
+.stDataFrame { background: #161b22; }
+h1,h2,h3 { color: #e6edf3; }
+p, li     { color: #8b949e; }
+</style>
+""", unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4 = st.tabs([
-    "Coverage & Received Power",
-    "Frequency Reuse & Sectorization",
-    "Microwave Backhaul",
-    "Improvement Study",
+# ── Sidebar: global controls ───────────────────────────────────────────────────
+st.sidebar.title("⚙️ Scenario Controls")
+st.sidebar.markdown("---")
+
+SCENARIO_PATH = os.path.join(os.path.dirname(__file__), "scenario.yaml")
+sc = load_scenario(SCENARIO_PATH)
+
+alpha       = st.sidebar.slider("Load multiplier α", 1.0, 5.0, 1.0, 0.5)
+grid_res    = st.sidebar.select_slider("Grid resolution", [60, 80, 100, 120], value=80)
+reuse_N     = st.sidebar.selectbox("Reuse factor N", [1, 3, 4, 7, 12], index=2)
+sectors     = st.sidebar.radio("Sectors / site", [1, 3, 6], index=1, horizontal=True)
+fail_link   = st.sidebar.selectbox("Inject failure", ["None"] + [
+    s["name"] for s in sc["sites"] if s["type"] == "base_station"])
+
+st.sidebar.markdown("---")
+rerun = st.sidebar.button("▶ Re-run scenario", type="primary", use_container_width=True)
+
+# ── Header ────────────────────────────────────────────────────────────────────
+st.title("📡 Wireless Planning Dashboard")
+st.caption(f"**Student 3 — Wireless Planning Lead** | Group 1 | TELE 527 | BIUST 2026  |  α = {alpha:.1f}")
+
+# ── Tabs ──────────────────────────────────────────────────────────────────────
+tabs = st.tabs([
+    "🗺️ Coverage & Propagation",
+    "📶 Link Quality & Backhaul",
+    "📊 Erlang B & GoS",
+    "📞 Call Setup & Signaling",
+    "🔁 Reuse & Sectorization",
+    "⚡ Stress Test & Breaking Point",
 ])
 
 
 # =============================================================================
-# TAB 1 — Coverage Heatmap
+# ── Cached computations ───────────────────────────────────────────────────────
 # =============================================================================
 
-with tab1:
-    st.header("Coverage Heatmap")
-    st.markdown("""
-    Visualises received power across the 20 × 20 km district using the
-    **COST 231 Hata** model at 1800 MHz.  
-    Adjust the sliders to explore sensitivity — this is your breaking-point study.
-    """)
+@st.cache_data(show_spinner=False)
+def _get_grid(grid_res, alpha_val):
+    """Build coverage grid — cached."""
+    env  = sc["environment"]
+    f, hb, hm = env["carrier_frequency_mhz"], env["base_station_height_m"], env["mobile_height_m"]
+    ptx  = env["tx_power_dbm"]
+    eirp = ptx + 17.0 - 2.0
+    size = env["district_size_km"]
+    xs   = np.linspace(0, size, grid_res)
+    ys   = np.linspace(0, size, grid_res)
+    grid = np.full((grid_res, grid_res), -150.0)
+    bs_sites = [(s["x_km"], s["y_km"]) for s in sc["sites"] if s["type"] == "base_station"]
+    for (sx, sy) in bs_sites:
+        for j, y in enumerate(ys):
+            for i, x in enumerate(xs):
+                d   = max(math.hypot(x-sx, y-sy), 0.05)
+                pl  = cost231_hata(d, f, hb, hm, 0.0)
+                prx = eirp - pl
+                if prx > grid[j, i]:
+                    grid[j, i] = prx
+    return xs, ys, grid
 
-    col1, col2 = st.columns([1, 2])
 
-    with col1:
-        st.subheader("Controls")
-        tx_power = st.slider("Tx Power (dBm)", 30, 50, 46, 1)
-        tx_gain  = st.slider("Tx Antenna Gain (dBi)", 10, 20, 17, 1)
-        h_base   = st.slider("Base Station Height (m)", 15, 60, 35, 5)
-        thr1     = st.slider("Threshold 1 (dBm)", -100, -70, -85, 1)
-        thr2     = st.slider("Threshold 2 (dBm)", -110, -80, -95, 1)
-        grid_res = st.select_slider("Grid resolution", [50, 80, 100, 120], value=80)
+@st.cache_data(show_spinner=False)
+def _get_traffic(alpha_val):
+    return compute_traffic_matrix(sc, alpha_val)
 
-        sites_default = [(5, 5), (5, 15), (10, 10), (15, 5), (15, 15)]
-        site_count = st.radio("Number of sites", [5, 6], horizontal=True)
-        sites = sites_default
-        if site_count == 6:
-            sites = sites_default + [(10, 3)]
 
-        run = st.button("▶ Compute Coverage", type="primary")
+@st.cache_data(show_spinner=False)
+def _get_teletraffic(alpha_val):
+    return run_teletraffic(sc, alpha_val)
 
-    with col2:
-        if run or "coverage_grid" not in st.session_state:
-            with st.spinner("Computing coverage grid…"):
-                xs, ys, grid = build_coverage_grid(
-                    sites,
-                    grid_res     = grid_res,
-                    area_km      = 20,
-                    tx_power_dbm = tx_power,
-                    tx_gain_dbi  = tx_gain,
-                    rx_gain_dbi  = 0,
-                    f_mhz        = 1800,
-                    h_base       = h_base,
-                )
-                st.session_state["coverage_grid"] = (xs, ys, grid, sites)
 
-        xs, ys, grid, cur_sites = st.session_state["coverage_grid"]
+# =============================================================================
+# TAB 1 — Coverage & Propagation (screenshot fields)
+# =============================================================================
 
-        fig, ax = plt.subplots(figsize=(7, 6))
-        norm = mcolors.Normalize(vmin=-120, vmax=-50)
+with tabs[0]:
+    st.header("Coverage & Propagation Results")
+    st.markdown("> **Student 3 → Student 4 interface** — these fields feed directly into the routing module.")
+
+    with st.spinner("Computing coverage grid…"):
+        xs, ys, grid = _get_grid(grid_res, alpha)
+
+    env    = sc["environment"]
+    thr_od = env["coverage_threshold_outdoor_dbm"]
+    thr_in = env["coverage_threshold_indoor_dbm"]
+    cov    = {
+        "outdoor_pct": round(100*float(np.sum(grid >= thr_od))/grid.size, 1),
+        "indoor_pct":  round(100*float(np.sum(grid >= thr_in))/grid.size, 1),
+    }
+
+    # KPI metrics row
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Outdoor Coverage", f"{cov['outdoor_pct']}%",
+              f"threshold {thr_od} dBm")
+    c2.metric("Indoor Coverage",  f"{cov['indoor_pct']}%",
+              f"threshold {thr_in} dBm")
+    c3.metric("Max Rx Power",     f"{grid.max():.1f} dBm")
+    c4.metric("Min Rx Power",     f"{grid.min():.1f} dBm")
+    c5.metric("Coverage Radius",  f"{_coverage_radius(sc):.2f} km")
+
+    # Heatmap
+    col_map, col_lb = st.columns([2, 1])
+    with col_map:
+        fig, ax = plt.subplots(figsize=(8, 7))
+        fig.patch.set_facecolor("#0d1117")
+        ax.set_facecolor("#0d1117")
+        norm = mcolors.Normalize(vmin=-130, vmax=-50)
         pcm  = ax.pcolormesh(xs, ys, grid, cmap="RdYlGn", norm=norm, shading="auto")
-        plt.colorbar(pcm, ax=ax, label="Rx power (dBm)")
-        for thr, ls, col in [(thr1, "--", "white"), (thr2, ":", "cyan")]:
-            cs = ax.contour(xs, ys, grid, levels=[thr],
-                            colors=[col], linewidths=2, linestyles=ls)
-            ax.clabel(cs, fmt=f"{thr} dBm", fontsize=8, colors=[col])
-        for (sx, sy) in cur_sites:
-            ax.plot(sx, sy, "^w", markersize=9, markeredgecolor="black")
-        ax.set_xlabel("East–West (km)")
-        ax.set_ylabel("North–South (km)")
-        ax.set_title("COST 231 @ 1800 MHz — Best-Server Rx Power")
+        cbar = fig.colorbar(pcm, ax=ax, pad=0.02, shrink=0.85)
+        cbar.set_label("Received power (dBm)", color="white", fontsize=9)
+        cbar.ax.yaxis.set_tick_params(color="white")
+        plt.setp(cbar.ax.yaxis.get_ticklabels(), color="white")
+        for thr, ls, col, lbl in [
+            (thr_od, "--", "white", f"{thr_od} dBm outdoor"),
+            (thr_in, ":",  "cyan",  f"{thr_in} dBm indoor"),
+        ]:
+            try:
+                cs = ax.contour(xs, ys, grid, levels=[thr],
+                                colors=[col], linewidths=2, linestyles=ls)
+                ax.clabel(cs, fmt=f"{thr} dBm", fontsize=8, colors=[col])
+            except Exception:
+                pass
+
+        # Site markers + backhaul lines
+        cr1 = next(s for s in sc["sites"] if s["name"] == "CR-1")
+        cr2 = next(s for s in sc["sites"] if s["name"] == "CR-2")
+        for bs in [s for s in sc["sites"] if s["type"] == "base_station"]:
+            colour = "#E74C3C" if bs["name"] == fail_link else "white"
+            ax.plot(bs["x_km"], bs["y_km"], "^", color=colour, markersize=11,
+                    markeredgecolor="black", markeredgewidth=1.3, zorder=6)
+            ax.annotate(bs["name"], (bs["x_km"], bs["y_km"]),
+                        xytext=(3, 7), textcoords="offset points",
+                        fontsize=8, color=colour, fontweight="bold")
+            if bs["name"] != fail_link:
+                ax.plot([cr1["x_km"], bs["x_km"]], [cr1["y_km"], bs["y_km"]],
+                        "w-", alpha=0.25, lw=1)
+                ax.plot([cr2["x_km"], bs["x_km"]], [cr2["y_km"], bs["y_km"]],
+                        color="cyan", alpha=0.12, lw=0.8, ls="--")
+        ax.plot(cr1["x_km"], cr1["y_km"], "s", color="gold", markersize=12,
+                markeredgecolor="black", zorder=6)
+        ax.annotate("CR-1", (cr1["x_km"], cr1["y_km"]),
+                    xytext=(4, 8), textcoords="offset points",
+                    fontsize=8, color="gold", fontweight="bold")
+        ax.plot(cr2["x_km"], cr2["y_km"], "s", color="gold", markersize=12,
+                markeredgecolor="black", zorder=6)
+        ax.annotate("CR-2", (cr2["x_km"], cr2["y_km"]),
+                    xytext=(4, 8), textcoords="offset points",
+                    fontsize=8, color="gold", fontweight="bold")
+        ax.plot([cr1["x_km"], cr2["x_km"]], [cr1["y_km"], cr2["y_km"]],
+                color="gold", lw=2, alpha=0.8)
+
+        ax.set_xlabel("East–West (km)", color="white")
+        ax.set_ylabel("North–South (km)", color="white")
+        ax.tick_params(colors="white")
+        for sp in ax.spines.values():
+            sp.set_edgecolor("#444")
+        ax.set_title("COST 231 Hata @ 1800 MHz — Best-Server Rx Power",
+                     color="white", fontsize=11)
+        plt.tight_layout()
         st.pyplot(fig)
         plt.close(fig)
 
-        # Statistics
-        stats = coverage_statistics(grid, [thr1, thr2])
-        c1, c2 = st.columns(2)
-        c1.metric(f"Coverage ≥ {thr1} dBm", f"{stats[thr1]}%", "Good (voice/video)")
-        c2.metric(f"Coverage ≥ {thr2} dBm", f"{stats[thr2]}%", "Edge (telemetry)")
+    with col_lb:
+        # ── EXACT SCREENSHOT TABLE: coverage_propagation results ──────────────
+        st.subheader("Coverage & propagation results")
+        st.caption("**Student 3 — Wireless lead**")
+
+        lb_table = site_link_budget_table(sc)
+        lb_df    = pd.DataFrame(lb_table)
+
+        # Rename columns to match screenshot exactly
+        lb_df_display = lb_df.rename(columns={
+            "site_id":             "site_id",
+            "received_signal_dbm": "received_signal_dbm",
+            "path_loss_db":        "path_loss_db",
+            "link_margin_db":      "link_margin_db",
+            "coverage_radius_km":  "coverage_radius_km",
+            "link_quality":        "link_quality",
+        })
+
+        def _colour_quality(val):
+            colours = {"good": "color: #2ECC71", "marginal": "color: #F39C12", "poor": "color: #E74C3C"}
+            return colours.get(val, "")
+
+        styled = lb_df_display.style.applymap(_colour_quality, subset=["link_quality"])
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+
+        # CSV export button (screenshot shows CSV badge)
+        csv_str = lb_df.to_csv(index=False)
+        st.download_button("⬇ Download CSV", csv_str,
+                           "coverage_propagation.csv", "text/csv",
+                           use_container_width=True)
+
+        # Threshold justification
+        st.markdown("""
+        **Threshold justification**
+        - **−90 dBm outdoor**: Minimum RSRP per 3GPP TS 36.213 for LTE
+          connected mode in suburban-rural terrain
+        - **−80 dBm indoor**: Adds 10 dB indoor penetration loss margin
+          (concrete/brick building, scenario config)
+        """)
 
 
 # =============================================================================
-# TAB 2 — Frequency Reuse & Sectorization
+# TAB 2 — Link Quality & Backhaul Capacity
 # =============================================================================
 
-with tab2:
-    st.header("Frequency Reuse & Sectorization")
+with tabs[1]:
+    st.header("Link Quality & Backhaul Capacity")
 
-    col1, col2 = st.columns([1, 2])
+    with st.spinner("Validating backhaul links…"):
+        traffic_df  = _get_traffic(alpha)
+        bh_results  = validate_backhaul_capacity(sc, traffic_df, alpha)
+        bh_df       = pd.DataFrame(bh_results)
 
-    with col1:
-        N = st.selectbox("Reuse factor N", [1, 3, 4, 7, 12], index=2)
-        S = st.radio("Sectors per site", [1, 3, 6], index=1, horizontal=True)
-        total_bw = st.number_input("Total bandwidth (MHz)", 10.0, 40.0, 20.0, 5.0)
-        ch_bw    = st.number_input("Channel BW (MHz)", 1.0, 10.0, 5.0, 1.0)
+    # Summary metrics
+    good_ct = sum(1 for r in bh_results if r["link_status"] == "good")
+    c1,c2,c3,c4 = st.columns(4)
+    c1.metric("Links: Good",     good_ct)
+    c2.metric("Links: Marginal", sum(1 for r in bh_results if r["link_status"] == "marginal"))
+    c3.metric("Links: Poor",     sum(1 for r in bh_results if r["link_status"] == "poor"))
+    c4.metric("Peak utilisation",f"{max(r['link_utilisation'] for r in bh_results)*100:.2f}%")
 
-    with col2:
-        reuse  = frequency_reuse_cluster(N, total_bw, ch_bw)
-        sector = sectorization_analysis(N, S, total_bw, ch_bw)
+    st.markdown("---")
 
-        st.subheader("Reuse Metrics")
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric("Cluster size N",       reuse["reuse_factor"])
-        r2.metric("D/R ratio",            reuse["D_R_ratio"])
-        r3.metric("Channels/cell",        reuse["channels_per_cell"])
-        r4.metric("Approx SIR (dB)",      reuse["approx_SIR_dB"])
+    # Primary vs backup link usage chart — Student 4 requirement
+    col_chart, col_table = st.columns([2, 1])
+    with col_chart:
+        st.subheader("Per-Link Usage (Primary vs Backup)")
+        sites   = [r["site"] for r in bh_results]
+        demand  = [r["demand_mbps"] for r in bh_results]
+        cap     = [r["capacity_mbps"] for r in bh_results]
+        colours = ["#2ECC71" if r["link_status"] == "good"
+                   else "#F39C12" if r["link_status"] == "marginal"
+                   else "#E74C3C" for r in bh_results]
 
-        st.subheader("Sectorization Gain")
-        s1, s2 = st.columns(2)
-        s1.metric("Capacity gain", f"×{sector['capacity_gain_x']}")
-        s2.info(sector["summary"])
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+        fig.patch.set_facecolor("#0d1117")
+        x = np.arange(len(sites))
 
-    # Hexagonal cluster diagram
-    fig = plot_reuse_pattern(N, filename=f"reuse_N{N}_dashboard.png")
+        for ax in (ax1, ax2):
+            ax.set_facecolor("#0d1117")
+            ax.tick_params(colors="white")
+            for sp in ax.spines.values():
+                sp.set_edgecolor("#444")
+
+        ax1.bar(x, demand, color=colours, width=0.5)
+        ax1.bar(x, cap, width=0.5, color="none", edgecolor="#444", ls="--", lw=1.5)
+        for i, (d, c) in enumerate(zip(demand, cap)):
+            ax1.text(i, d + 0.05, f"{d:.2f}", ha="center", fontsize=8, color="white")
+        ax1.set_xticks(x); ax1.set_xticklabels(sites, color="white")
+        ax1.set_ylabel("Mbps", color="white")
+        ax1.set_title(f"Demand vs Capacity (α={alpha})", color="white")
+
+        util_pct = [r["link_utilisation"]*100 for r in bh_results]
+        safe_zone= sc["qos"]["utilisation_zones"]["safe"] * 100
+        col2 = ["#2ECC71" if u < safe_zone else "#F39C12" if u < 90 else "#E74C3C"
+                 for u in util_pct]
+        ax2.bar(x, util_pct, color=col2, width=0.5)
+        ax2.axhline(safe_zone, color="orange", ls="--", lw=1.5, label=f"Safe ({safe_zone:.0f}%)")
+        ax2.axhline(90, color="red", ls=":", lw=1.5, label="Action (90%)")
+        for i, u in enumerate(util_pct):
+            ax2.text(i, u + 0.2, f"{u:.1f}%", ha="center", fontsize=8, color="white")
+        ax2.set_xticks(x); ax2.set_xticklabels(sites, color="white")
+        ax2.set_ylabel("Utilisation (%)", color="white")
+        ax2.set_title("Link Utilisation", color="white")
+        ax2.set_ylim(0, 110)
+        ax2.legend(fontsize=8, facecolor="#161b22", labelcolor="white")
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close(fig)
+
+    with col_table:
+        st.subheader("Link Status")
+        disp = bh_df[["site", "primary_dist_km", "primary_margin_db",
+                       "rain_attenuation_db", "margin_after_rain_db",
+                       "calls_routed_primary", "calls_routed_backup",
+                       "link_status"]].copy()
+        disp.columns = ["Site","Dist (km)","Margin (dB)","Rain (dB)",
+                         "Net Margin","Primary calls","Backup calls","Status"]
+
+        def _st(val):
+            return {"good": "color:#2ECC71", "marginal": "color:#F39C12",
+                    "poor": "color:#E74C3C"}.get(val, "")
+        st.dataframe(disp.style.applymap(_st, subset=["Status"]),
+                     use_container_width=True, hide_index=True)
+
+    # Rain attenuation section
+    st.markdown("---")
+    st.subheader("🌧️ Rain Attenuation — Botswana Zone H (ITU-R P.838-3)")
+    rain_rows = []
+    bh_cfg = sc["backhaul"]
+    for r in bh_results:
+        rain = r["rain_attenuation_db"]
+        rain_rows.append({
+            "Site": r["site"],
+            "Distance (km)": r["primary_dist_km"],
+            "Rain att. (dB)": rain,
+            "Margin w/o rain (dB)": r["primary_margin_db"],
+            "Net margin (dB)": r["margin_after_rain_db"],
+            "Status after rain": "✅ OK" if r["margin_after_rain_db"] > 0 else "❌ FAIL",
+        })
+    st.dataframe(pd.DataFrame(rain_rows), use_container_width=True, hide_index=True)
+
+    # Backbone 13 GHz budget
+    st.markdown("---")
+    st.subheader("13 GHz Backbone — CR-1 ↔ CR-2")
+    cr1 = next(s for s in sc["sites"] if s["name"] == "CR-1")
+    cr2 = next(s for s in sc["sites"] if s["name"] == "CR-2")
+    d_bb = math.hypot(cr1["x_km"]-cr2["x_km"], cr1["y_km"]-cr2["y_km"])
+    bb   = sc["backbone_13ghz"]
+    mw_bb= microwave_budget(bb["frequency_ghz"], d_bb, bb)
+    rain_bb = rain_attenuation_db(d_bb, bb["frequency_ghz"])
+    b1,b2,b3,b4 = st.columns(4)
+    b1.metric("FSPL",        f"{mw_bb['fspl_db']:.1f} dB")
+    b2.metric("Rx Power",    f"{mw_bb['rx_power_dbm']:.1f} dBm")
+    b3.metric("Link Margin", f"{mw_bb['link_margin_db']:.1f} dB",
+              delta=f"{mw_bb['link_margin_db']-bb['min_fade_margin_db']:+.1f} vs req")
+    b4.metric("Status",      mw_bb["status"])
+    st.info(f"Rain attenuation at {bb['frequency_ghz']} GHz, {d_bb:.1f} km: **{rain_bb} dB** — "
+            f"net margin after rain: **{mw_bb['link_margin_db']-rain_bb:.1f} dB**")
+
+
+# =============================================================================
+# TAB 3 — Erlang B & Grade of Service
+# =============================================================================
+
+with tabs[2]:
+    st.header("Erlang B Analysis & Grade of Service")
+
+    with st.spinner("Computing GoS…"):
+        tt  = _get_teletraffic(alpha)
+        gos = grade_of_service(sc, tt, alpha)
+
+    # GoS summary
+    tc = sc["traffic"]
+    st.subheader("Grade of Service (GoS) — per site")
+    col_gos, col_erl = st.columns([1, 2])
+
+    with col_gos:
+        gos_df = pd.DataFrame(gos["per_site"])
+        gos_display = gos_df[["site","voice_offered_erl","voice_channels_N",
+                               "voice_blocking","video_blocking","gos_target","gos_met"]].copy()
+        gos_display.columns = ["Site","Voice A (Erl)","N circuits",
+                                "Voice B","Video B","Target B","GoS met"]
+
+        def _met(val):
+            return "color:#2ECC71" if val else "color:#E74C3C"
+        st.dataframe(gos_display.style.applymap(_met, subset=["GoS met"]),
+                     use_container_width=True, hide_index=True)
+
+        all_ok = gos["all_gos_met"]
+        if all_ok:
+            st.success(f"✅ All sites meet GoS target B ≤ {gos['gos_target']:.1%}")
+        else:
+            st.error(f"❌ GoS violated — worst site: {gos['worst_site']} "
+                     f"(B={gos['worst_blocking']:.4%})")
+
+        # Network-level GoS targets (Student 4 requirement)
+        st.markdown("""
+        **Network-Level GoS Targets**
+        | Traffic class | GoS target |
+        |---|---|
+        | Voice (primary links) | B ≤ 2% (Erlang B) |
+        | Voice (high-priority) | B ≤ 0.5–1% |
+        | Video sessions | B ≤ 2% |
+        | Telemetry | N/A (connectionless) |
+        """)
+
+    with col_erl:
+        # Erlang B curves — blocking vs N circuits
+        st.subheader("Erlang B Curves (blocking vs circuits)")
+        A_voice = tc["voice"]["offered_load_erl"] * alpha
+        A_video = tc["video"]["offered_load_erl"] * alpha
+        A_tel   = tc["telemetry"]["offered_load_erl"] * alpha
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+        fig.patch.set_facecolor("#0d1117")
+        for ax in (ax1, ax2):
+            ax.set_facecolor("#0d1117")
+            ax.tick_params(colors="white")
+            for sp in ax.spines.values(): sp.set_edgecolor("#444")
+
+        N_range = range(0, 16)
+
+        for A, label, col in [
+            (A_voice, f"Voice (A={A_voice:.2f} Erl)", "#3498DB"),
+            (A_video, f"Video (A={A_video:.2f} Erl)", "#E74C3C"),
+            (A_tel,   f"Telemetry (A={A_tel:.2f} Erl)", "#2ECC71"),
+        ]:
+            y = [erlang_b(A, n) for n in N_range]
+            ax1.semilogy(list(N_range), y, "-o", color=col, label=label, markersize=4, lw=2)
+
+        ax1.axhline(tc["voice"]["kpi_blocking_prob"], color="orange", ls="--",
+                    lw=1.5, label=f"Target B={tc['voice']['kpi_blocking_prob']:.1%}")
+        ax1.set_xlabel("Number of circuits N", color="white")
+        ax1.set_ylabel("Blocking probability B", color="white")
+        ax1.set_title(f"Erlang B Curves (α={alpha})", color="white")
+        ax1.legend(fontsize=8, facecolor="#161b22", labelcolor="white")
+        ax1.grid(True, alpha=0.2)
+
+        # Blocking vs load for fixed N=4
+        N_fixed = 4
+        A_range = np.linspace(0.1, 5.0, 200)
+        B_range = [erlang_b(A, N_fixed) for A in A_range]
+        ax2.semilogy(A_range, B_range, "#3498DB", lw=2)
+        ax2.axvline(A_voice, color="#3498DB", ls="--", lw=1.5,
+                    label=f"Voice load ({A_voice:.2f} Erl)")
+        ax2.axhline(tc["voice"]["kpi_blocking_prob"], color="orange", ls="--",
+                    lw=1.5, label=f"Target B={tc['voice']['kpi_blocking_prob']:.1%}")
+        ax2.fill_between(A_range, tc["voice"]["kpi_blocking_prob"],
+                         [max(b, 1e-10) for b in B_range],
+                         where=[b > tc["voice"]["kpi_blocking_prob"] for b in B_range],
+                         alpha=0.2, color="#E74C3C")
+        ax2.set_xlabel("Offered load A (Erlang)", color="white")
+        ax2.set_ylabel("Blocking probability B", color="white")
+        ax2.set_title(f"Blocking vs Load  (N={N_fixed} circuits)", color="white")
+        ax2.legend(fontsize=8, facecolor="#161b22", labelcolor="white")
+        ax2.grid(True, alpha=0.2)
+        ax2.set_ylim(1e-8, 1.5)
+
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close(fig)
+
+    # Dimensioning table from Student 2
+    st.markdown("---")
+    st.subheader("Voice Channel Dimensioning Table")
+    st.dataframe(tt["dimensioning_table"], use_container_width=True, hide_index=True)
+
+
+# =============================================================================
+# TAB 4 — Call Setup & Signaling (Student 4 requirement)
+# =============================================================================
+
+with tabs[3]:
+    st.header("Call Setup Metrics & Signaling")
+    st.markdown("> **Student 4 data feed** — setup delay, link usage, BHCA, signaling load.")
+
+    sig_df  = compute_signaling_load(sc, alpha)
+    sig_sum = signaling_summary(sc, alpha)
+
+    # ── Call Setup Delay ──────────────────────────────────────────────────────
+    st.subheader("📊 Setup Delay (ms) — time from call attempt to connection")
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    col_m1.metric("Min setup delay", f"{sig_df['call_setup_delay_ms'].min():.1f} ms")
+    col_m2.metric("Max setup delay", f"{sig_df['call_setup_delay_ms'].max():.1f} ms",
+                   delta=f"vs {sig_df['kpi_target_ms'].iloc[0]} ms KPI",
+                   delta_color="inverse")
+    col_m3.metric("Total BHCA",     f"{sig_sum['total_bhca']:.0f}")
+    col_m4.metric("All KPIs met",   "✅ Yes" if sig_sum["all_kpis_met"] else "❌ No")
+
+    # Setup delay chart
+    fig, ax = plt.subplots(figsize=(10, 3))
+    fig.patch.set_facecolor("#0d1117")
+    ax.set_facecolor("#0d1117")
+    sites  = sig_df["site"].tolist()
+    delays = sig_df["call_setup_delay_ms"].tolist()
+    target = sig_df["kpi_target_ms"].iloc[0]
+    colours= ["#2ECC71" if d <= target else "#E74C3C" for d in delays]
+    ax.bar(sites, delays, color=colours, width=0.5)
+    ax.axhline(target, color="orange", ls="--", lw=2, label=f"KPI target {target} ms")
+    for i, d in enumerate(delays):
+        ax.text(i, d + 0.3, f"{d:.0f} ms", ha="center", fontsize=9, color="white")
+    ax.tick_params(colors="white")
+    ax.set_ylabel("Setup delay (ms)", color="white")
+    ax.set_title("Call Setup Delay per BS (Propagation + Processing)", color="white")
+    ax.legend(fontsize=9, facecolor="#161b22", labelcolor="white")
+    for sp in ax.spines.values(): sp.set_edgecolor("#444")
+    plt.tight_layout()
     st.pyplot(fig)
     plt.close(fig)
 
-    st.markdown("""
-    **Engineering interpretation:**  
-    A reuse factor of N=4 with 3-sector antennas provides a good balance between
-    co-channel interference protection (D/R ≈ 3.46) and spectral efficiency.
-    Each sector reduces the effective interference by ~3 dB compared to omni cells.
-    """)
+    st.markdown("---")
+
+    # ── Link Usage / Selection  (primary vs backup) ───────────────────────────
+    st.subheader("🔀 Link Usage / Selection — Primary vs Backup")
+
+    bh_results = validate_backhaul_capacity(sc, _get_traffic(alpha), alpha)
+    link_rows  = []
+    for r in bh_results:
+        prim_ok = r["primary_status"] == "PASS"
+        link_rows.append({
+            "BS Site":             r["site"],
+            "Primary link":        r["primary_link"],
+            "Primary margin (dB)": r["primary_margin_db"],
+            "Primary status":      r["primary_status"],
+            "Backup link":         r["backup_link"],
+            "Backup margin (dB)":  r["backup_margin_db"],
+            "Backup status":       r["backup_status"],
+            "Active link":         "Primary" if prim_ok else "Backup",
+            "Calls via primary":   "All" if prim_ok else "0",
+            "Calls via backup":    "0"  if prim_ok else "All",
+        })
+    link_df = pd.DataFrame(link_rows)
+
+    def _link_col(val):
+        if val == "PASS":    return "color:#2ECC71"
+        if val == "FAIL":    return "color:#E74C3C"
+        if val == "Primary": return "color:#58a6ff"
+        if val == "Backup":  return "color:#F39C12"
+        return ""
+    st.dataframe(
+        link_df.style.applymap(_link_col, subset=["Primary status","Backup status","Active link"]),
+        use_container_width=True, hide_index=True
+    )
+
+    # Failure injection effect
+    if fail_link != "None":
+        st.warning(f"⚠️ Failure injected on {fail_link}: all {fail_link} calls rerouted to backup link.")
+        affected = next((r for r in bh_results if r["site"] == fail_link), None)
+        if affected:
+            bk = affected["backup_margin_db"]
+            st.info(f"Backup link margin: **{bk:.1f} dB** — "
+                    f"{'✅ sufficient' if bk >= sc['backhaul']['min_fade_margin_db'] else '❌ insufficient'}")
+
+    st.markdown("---")
+
+    # ── Signaling full table ───────────────────────────────────────────────────
+    st.subheader("Signaling Load per BS")
+    sig_display = sig_df.copy()
+    sig_display.columns = ["Site","BHCA","Sig msgs/hr","Sig load (bps)",
+                            "Setup delay (ms)","KPI target (ms)","KPI met"]
+    def _kpi(val):
+        return "color:#2ECC71" if val else "color:#E74C3C"
+    st.dataframe(sig_display.style.applymap(_kpi, subset=["KPI met"]),
+                 use_container_width=True, hide_index=True)
+
+    # Number of calls routed per link
+    st.markdown("---")
+    st.subheader("Number of Calls Routed per Link")
+    call_rows = []
+    for r in bh_results:
+        A_voice = sc["traffic"]["voice"]["offered_load_erl"] * alpha
+        A_video = sc["traffic"]["video"]["offered_load_erl"] * alpha
+        expected_calls = (A_voice + A_video)  # concurrent active sessions = Erlang value
+        call_rows.append({
+            "BS Site":                    r["site"],
+            "Arrival rate (voice/hr)":    sc["traffic"]["voice"]["arrival_rate_per_hour"] * alpha,
+            "Arrival rate (video/hr)":    sc["traffic"]["video"]["arrival_rate_per_hour"] * alpha,
+            "Expected concurrent calls":  round(expected_calls, 2),
+            "Calls on primary link":      round(expected_calls, 2) if r["primary_status"] == "PASS" else 0,
+            "Calls on backup link":       0 if r["primary_status"] == "PASS" else round(expected_calls, 2),
+        })
+    st.dataframe(pd.DataFrame(call_rows), use_container_width=True, hide_index=True)
+
+    # Delay KPIs from Student 2
+    st.markdown("---")
+    st.subheader("P95 Delay KPIs (from Student 2 teletraffic)")
+    tt = _get_teletraffic(alpha)
+    st.dataframe(tt["delay_kpis"], use_container_width=True, hide_index=True)
 
 
 # =============================================================================
-# TAB 3 — Microwave Backhaul Link Budget
+# TAB 5 — Frequency Reuse & Sectorization
 # =============================================================================
 
-with tab3:
-    st.header("Microwave Backhaul Link Budget")
-    st.markdown("Point-to-point microwave link budget for the longest backhaul hop.")
+with tabs[4]:
+    st.header("Frequency Reuse & Sectorization")
 
-    col1, col2 = st.columns([1, 2])
+    reuse = frequency_reuse_cluster(reuse_N, 20, 5)
+    sect  = sectorization_analysis(reuse_N, sectors, 20, 5)
 
-    with col1:
-        freq_ghz = st.select_slider("Frequency (GHz)", [7, 11, 15, 18, 23], value=7)
-        dist_km  = st.slider("Distance (km)", 1.0, 30.0, 12.0, 0.5)
-        ptx      = st.slider("Tx Power (dBm)", 20, 40, 30, 1)
-        gtx      = st.slider("Tx Antenna Gain (dBi)", 25, 45, 34, 1)
-        grx      = st.slider("Rx Antenna Gain (dBi)", 25, 45, 34, 1)
-        lsys     = st.slider("System Losses (dB)", 1.0, 6.0, 3.0, 0.5)
-        fm_req   = st.slider("Required Fade Margin (dB)", 10, 30, 20, 1)
-        rx_sens  = st.slider("Rx Sensitivity (dBm)", -100, -70, -85, 1)
+    col_m, col_fig = st.columns([1, 2])
+    with col_m:
+        st.subheader("Reuse Metrics")
+        m1,m2,m3,m4 = st.columns(2)
+        m1.metric("Cluster N",         reuse["reuse_factor"])
+        m2.metric("D/R ratio",          reuse["D_R_ratio"])
+        m3.metric("Channels/cell",       reuse["channels_per_cell"])
+        m4.metric("Approx SIR (dB)",     reuse["approx_SIR_dB"])
 
-    with col2:
-        budget = microwave_link_budget(
-            freq_ghz         = freq_ghz,
-            distance_km      = dist_km,
-            tx_power_dbm     = ptx,
-            tx_gain_dbi      = gtx,
-            rx_gain_dbi      = grx,
-            system_losses_db = lsys,
-            fade_margin_db   = fm_req,
-            rx_threshold_dbm = rx_sens,
-        )
+        st.metric("Spectral efficiency", f"{reuse['spectral_efficiency']:.2f}")
 
-        status_colour = "normal" if budget["status"] == "PASS" else "inverse"
-        b1, b2, b3, b4 = st.columns(4)
-        b1.metric("EIRP (dBm)",           budget["eirp_dbm"])
-        b2.metric("FSPL (dB)",             budget["fspl_db"])
-        b3.metric("Rx Power (dBm)",        budget["rx_power_dbm"])
-        b4.metric("Link Margin (dB)",      budget["link_margin_db"],
-                  delta=f"{budget['link_margin_db'] - fm_req:+.1f} vs required")
-
-        if budget["status"] == "PASS":
-            st.success(f"✅ Link PASS — margin {budget['link_margin_db']:.1f} dB ≥ {fm_req} dB required")
-        else:
-            st.error(f"❌ Link FAIL — margin {budget['link_margin_db']:.1f} dB < {fm_req} dB required")
-
-        import pandas as pd
-        df = pd.DataFrame([
-            {"Parameter": "Frequency",          "Symbol": "f",     "Value": f"{freq_ghz} GHz"},
-            {"Parameter": "Distance",            "Symbol": "d",     "Value": f"{dist_km} km"},
-            {"Parameter": "Tx Power",            "Symbol": "Ptx",   "Value": f"{ptx} dBm"},
-            {"Parameter": "Tx Gain",             "Symbol": "Gtx",   "Value": f"{gtx} dBi"},
-            {"Parameter": "EIRP",                "Symbol": "EIRP",  "Value": f"{budget['eirp_dbm']} dBm"},
-            {"Parameter": "FSPL",                "Symbol": "FSPL",  "Value": f"{budget['fspl_db']} dB"},
-            {"Parameter": "System Losses",       "Symbol": "Lsys",  "Value": f"{lsys} dB"},
-            {"Parameter": "Rx Gain",             "Symbol": "Grx",   "Value": f"{grx} dBi"},
-            {"Parameter": "Received Power",      "Symbol": "Prx",   "Value": f"{budget['rx_power_dbm']} dBm"},
-            {"Parameter": "Rx Threshold",        "Symbol": "Smin",  "Value": f"{rx_sens} dBm"},
-            {"Parameter": "Link Margin",         "Symbol": "M",     "Value": f"{budget['link_margin_db']} dB"},
-        ])
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
-
-# =============================================================================
-# TAB 4 — Improvement Study
-# =============================================================================
-
-with tab4:
-    st.header("Coverage Improvement Study")
-    st.markdown("""
-    Compare the baseline 5-site layout against two improvement strategies:
-    - **Add a 6th site** at the south-centre coverage gap
-    - **Raise antenna height** from 35 m to 50 m
-    """)
-
-    if st.button("▶ Run Improvement Study", type="primary"):
-        res_file = os.path.join(os.path.dirname(__file__),
-                                "results", "wireless_results.json")
-        if os.path.exists(res_file):
-            with open(res_file) as f:
-                data = json.load(f)
-            improve = data.get("improvement_study", {})
-        else:
-            improve = {"baseline": {-85: "N/A", -95: "N/A"},
-                       "add_6th_site": {-85: "N/A", -95: "N/A"},
-                       "raise_height_50m": {-85: "N/A", -95: "N/A"}}
-            st.warning("Run `python run_pipeline.py` first to generate results.")
-
-        import pandas as pd
-        rows = []
-        for scenario, stats in improve.items():
-            label = {
-                "baseline":       "Baseline (5 sites, 35 m)",
-                "add_6th_site":   "6th Site Added",
-                "raise_height_50m": "Antenna Height → 50 m",
-            }.get(scenario, scenario)
-            rows.append({
-                "Scenario":          label,
-                "≥ −85 dBm (%)":     stats.get(-85, stats.get("-85", "N/A")),
-                "≥ −95 dBm (%)":     stats.get(-95, stats.get("-95", "N/A")),
-            })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.markdown("---")
+        st.subheader("Sectorization")
+        s1,s2 = st.columns(2)
+        s1.metric("Sectors/site", sectors)
+        s2.metric("Capacity gain", f"×{sect['capacity_gain_x']:.1f}")
+        st.info(f"**{sectors}-sector** config at N={reuse_N} "
+                f"gives **×{sect['capacity_gain_x']:.1f}** capacity vs omni. "
+                f"SIR ≈ {sect['sectorized']['approx_SIR_dB']:.1f} dB.")
 
         st.markdown("""
-        **Tradeoff discussion:**
-
-        | Option | Coverage gain | Cost implication | Capacity effect |
-        |---|---|---|---|
-        | 6th site | +8–12% at −85 dBm | +1 site CAPEX + backhaul | Requires N=4 reuse extension |
-        | Raise height | +5–8% at −85 dBm | Low (tower modification) | No impact on spectrum reuse |
-
-        **Recommendation:** Raising antenna height is the most cost-effective first step.
-        The 6th site should be reserved for when traffic forecasting (Student 5) confirms
-        that demand justifies the additional capacity.
+        **Engineering tradeoff**
+        | Factor | 3-sector | Omni |
+        |---|---|---|
+        | Capacity gain | ×3–4 | ×1 |
+        | Interference | Lower | Higher |
+        | Cost | +2 antennas/site | Baseline |
+        | Handover complexity | Higher | Lower |
         """)
 
-        fig_path = os.path.join(os.path.dirname(__file__),
-                                "figures", "improvement_study.png")
-        if os.path.exists(fig_path):
-            st.image(fig_path, caption="Before/After Coverage Comparison")
-        else:
-            st.info("Run `python run_pipeline.py` to generate the improvement figure.")
+    with col_fig:
+        st.subheader(f"Hexagonal Reuse Pattern — N={reuse_N}")
+        fig = plot_reuse_pattern(reuse_N)
+        st.pyplot(fig)
+        plt.close(fig)
+
+
+# =============================================================================
+# TAB 6 — Stress Test & Breaking Point
+# =============================================================================
+
+with tabs[5]:
+    st.header("Stress Testing & Breaking Point Analysis")
+
+    with st.spinner("Running stress sweep…"):
+        sweep = stress_sweep(sc)
+        bp    = find_breaking_point(sc)
+        bw_sweep = stress_bandwidth_sweep(sc)
+
+    # Breaking point banner
+    bp_alpha = float(bp["first_failure_alpha"])
+    if alpha >= bp_alpha:
+        st.error(f"🔴 **BREAKING POINT REACHED** at α={bp_alpha:.1f} "
+                 f"— {bp['first_failure_kpi']} exceeded target")
+    else:
+        st.success(f"✅ Operating safely at α={alpha:.1f} — "
+                   f"breaking point is α={bp_alpha:.1f}")
+
+    m1,m2,m3,m4 = st.columns(4)
+    m1.metric("Breaking point α",    f"{bp_alpha:.1f}")
+    m2.metric("First KPI failed",    bp["first_failure_kpi"])
+    m3.metric("KPI value at break",  f"{float(bp['first_failure_value']):.4f}")
+    m4.metric("KPI target",          bp["first_failure_target"])
+
+    st.info(bp["bottleneck_description"])
+    st.markdown("---")
+
+    col_voice, col_bw = st.columns(2)
+    with col_voice:
+        st.subheader("Voice Blocking vs Load Multiplier")
+        fig, ax = plt.subplots(figsize=(7, 4))
+        fig.patch.set_facecolor("#0d1117")
+        ax.set_facecolor("#0d1117")
+        ax.semilogy(sweep["load_multiplier"], sweep["voice_blocking"],
+                    "o-", color="#3498DB", lw=2, markersize=5)
+        ax.axhline(sc["traffic"]["voice"]["kpi_blocking_prob"],
+                   color="orange", ls="--", lw=2, label="2% KPI target")
+        ax.axvline(bp_alpha, color="#E74C3C", ls="-.", lw=2,
+                   label=f"Breaking point α={bp_alpha:.1f}")
+        ax.set_xlabel("Load multiplier α", color="white")
+        ax.set_ylabel("Blocking probability", color="white")
+        ax.set_title("Voice Blocking vs Load", color="white")
+        ax.legend(fontsize=9, facecolor="#161b22", labelcolor="white")
+        ax.tick_params(colors="white")
+        ax.grid(True, alpha=0.2)
+        for sp in ax.spines.values(): sp.set_edgecolor("#444")
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close(fig)
+
+    with col_bw:
+        st.subheader("Bandwidth Demand vs Load")
+        fig, ax = plt.subplots(figsize=(7, 4))
+        fig.patch.set_facecolor("#0d1117")
+        ax.set_facecolor("#0d1117")
+        ax.stackplot(bw_sweep["load_multiplier"],
+                     bw_sweep["telemetry_mbps"] * 5,   # ×5 sites
+                     bw_sweep["voice_mbps"] * 5,
+                     bw_sweep["video_mbps"] * 5,
+                     labels=["Telemetry ×5", "Voice ×5", "Video ×5"],
+                     colors=["#2ECC71", "#3498DB", "#E74C3C"], alpha=0.75)
+        ax.axhline(100, color="orange", ls="--", lw=2, label="100 Mbps link cap")
+        ax.set_xlabel("Load multiplier α", color="white")
+        ax.set_ylabel("Aggregate demand (Mbps)", color="white")
+        ax.set_title("Traffic Demand Breakdown", color="white")
+        ax.legend(fontsize=9, facecolor="#161b22", labelcolor="white")
+        ax.tick_params(colors="white")
+        ax.grid(True, alpha=0.2)
+        for sp in ax.spines.values(): sp.set_edgecolor("#444")
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close(fig)
+
+    # Full sweep table
+    st.markdown("---")
+    st.subheader("Full Stress Sweep Table")
+    sweep_disp = sweep.copy()
+    def _kpi_row(val):
+        return "color:#E74C3C" if val == False else "color:#2ECC71"
+    st.dataframe(
+        sweep_disp.style.applymap(_kpi_row, subset=["voice_kpi_met","telemetry_kpi_met",
+                                                      "video_kpi_met","all_kpis_met"]),
+        use_container_width=True, hide_index=True
+    )
+
+    # Coverage deep-dive at break point
+    st.markdown("---")
+    st.subheader("Coverage Sensitivity at Breaking Point")
+    st.markdown(f"""
+    At **α={bp_alpha:.1f}** (breaking point):
+    - Voice blocking: **{float(bp['first_failure_value']):.2%}** > target {bp['first_failure_target']:.1%}
+    - Required additional channels per site: **1** (N=4→5)
+    - Voice offered load at failure: **{bp['n_baseline']} circuits** insufficient
+    - **Recommended action**: Upgrade from N=4 to N=5 circuits per site to restore GoS
+    """)
