@@ -1,0 +1,2 @@
+outdoor_threshold_dbm,indoor_threshold_dbm,outdoor_coverage_pct,indoor_coverage_pct,max_rx_dbm,min_rx_dbm,median_rx_dbm,coverage_radius_km,district_area_km2,num_bs_sites,note
+-90.0,-80.0,2.9,0.8,-40.6,-124.3,-112.0,2.163,2500.0,5,Low outdoor coverage expected: 5 sites covering 2500 km² with 2.2 km cell radius. Engineering finding: more sites required for district-wide coverage.
