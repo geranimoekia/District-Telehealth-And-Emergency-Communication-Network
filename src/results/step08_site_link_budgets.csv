@@ -1,0 +1,6 @@
+site_id,site_label,received_signal_dbm,path_loss_db,link_margin_db,coverage_radius_km,link_quality,eirp_dbm,freq_mhz,tx_power_dbm,service_distance_km,shadow_fading_margin_db,body_loss_db,outdoor_threshold_dbm
+BS1,Clinic North-West,-78.2,136.2,11.8,2.163,good,58.0,1800,43.0,1.0,8.0,3.0,-90.0
+BS2,Clinic North-East,-78.2,136.2,11.8,2.163,good,58.0,1800,43.0,1.0,8.0,3.0,-90.0
+BS3,Clinic South-West,-78.2,136.2,11.8,2.163,good,58.0,1800,43.0,1.0,8.0,3.0,-90.0
+BS4,Clinic South,-78.2,136.2,11.8,2.163,good,58.0,1800,43.0,1.0,8.0,3.0,-90.0
+BS5,Clinic South-East,-78.2,136.2,11.8,2.163,good,58.0,1800,43.0,1.0,8.0,3.0,-90.0

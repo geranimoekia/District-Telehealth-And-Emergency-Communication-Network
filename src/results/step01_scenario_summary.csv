@@ -1,0 +1,8 @@
+name,label,type,x_km,y_km
+CR-1,District Hospital,core_router,25.0,25.0
+CR-2,District Health Office,core_router,20.0,28.0
+BS1,Clinic North-West,base_station,8.0,40.0
+BS2,Clinic North-East,base_station,42.0,40.0
+BS3,Clinic South-West,base_station,8.0,10.0
+BS4,Clinic South,base_station,25.0,8.0
+BS5,Clinic South-East,base_station,42.0,10.0
