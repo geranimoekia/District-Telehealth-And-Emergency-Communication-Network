@@ -1,0 +1,7 @@
+site,offered_load_erl,channels_required,achieved_blocking,target_blocking,kpi_met
+BS1,0.75,4,0.006234,0.02,True
+BS2,0.75,4,0.006234,0.02,True
+BS3,0.75,4,0.006234,0.02,True
+BS4,0.75,4,0.006234,0.02,True
+BS5,0.75,4,0.006234,0.02,True
+Backhaul trunk (5 sites aggregate),3.75,9,0.009555,0.02,True

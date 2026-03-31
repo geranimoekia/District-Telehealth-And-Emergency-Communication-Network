@@ -1,0 +1,7 @@
+year,trunk_offered_erl,blocking_prob,kpi_met,channels_required,n_baseline,upgrade_needed
+0,3.75,0.009555,True,9,9,False
+1,4.3125,0.019304,True,9,9,False
+2,4.9594,0.036195,False,10,9,True
+3,5.7033,0.062755,False,11,9,True
+4,6.5588,0.100587,False,12,9,True
+5,7.5426,0.14958,False,14,9,True
