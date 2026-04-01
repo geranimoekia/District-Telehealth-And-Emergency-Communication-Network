@@ -28,6 +28,8 @@ import os
 import sys
 import yaml
 import json
+import argparse
+import subprocess
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -78,7 +80,17 @@ def _kv(data: dict):
         print(f"    {k:<35}: {v}")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run TELE 527 wireless pipeline")
+    parser.add_argument("--dashboard", action="store_true",
+                        help="Launch Streamlit dashboard at the end (streamlit must be installed)")
+    parser.add_argument("--no-figures", action="store_true",
+                        help="Skip figure display commands (pipeline already uses non-interactive backend)")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = parse_args()
     print("\n" + "█"*62)
     print("  TELE 527 — Wireless Planning Pipeline  |  Student 3")
     print("  Group 1 | District Telehealth & Emergency Network")
@@ -206,3 +218,18 @@ if __name__ == "__main__":
     print("  PIPELINE COMPLETE — All 15 deliverables generated.")
     print(f"  Figures: ./figures/   Results: ./results/")
     print("█"*62 + "\n")
+
+    if args.dashboard:
+        print("Launching Streamlit dashboard (this may open a browser window)...")
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "streamlit", "run", "dashboard.py"],
+                cwd=os.path.dirname(__file__),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            print("Dashboard server started at http://localhost:8501")
+        except FileNotFoundError:
+            print("ERROR: Streamlit not found. Install with 'pip install streamlit'.")
+        except Exception as e:
+            print(f"ERROR: could not launch dashboard: {e}")

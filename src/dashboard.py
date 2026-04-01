@@ -73,6 +73,13 @@ st.sidebar.title("⚙️ Scenario Controls")
 st.sidebar.markdown("---")
 
 SCENARIO_PATH = os.path.join(os.path.dirname(__file__), "scenario.yaml")
+if not os.path.isfile(SCENARIO_PATH):
+    SCENARIO_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scenario.yaml"))
+if not os.path.isfile(SCENARIO_PATH):
+    raise FileNotFoundError(
+        f"scenario.yaml not found in src/ or project root. Checked: {os.path.join(os.path.dirname(__file__), 'scenario.yaml')} and {os.path.join(os.path.dirname(__file__), '..', 'scenario.yaml')}"
+    )
+
 sc = load_scenario(SCENARIO_PATH)
 
 alpha       = st.sidebar.slider("Load multiplier α", 1.0, 5.0, 1.0, 0.5)
