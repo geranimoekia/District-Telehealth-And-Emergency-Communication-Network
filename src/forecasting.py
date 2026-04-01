@@ -278,7 +278,7 @@ def forecast_erlang(scenario: dict) -> pd.DataFrame:
         Columns: month, offered_load_erl, blocking_prob, blocking_kpi_met,
                  channels_required, n_baseline, upgrade_needed
     """
-    from teletraffic import erlang_b, dimension_channels
+    from src.teletraffic import erlang_b, dimension_channels
 
     horizon = scenario.get("forecasting", {}).get(
         "horizon_months", DEFAULT_HORIZON_MONTHS
@@ -320,7 +320,7 @@ def forecast_trunk_erlang(scenario: dict) -> pd.DataFrame:
         Columns: month, trunk_offered_erl, blocking_prob, kpi_met,
                  channels_required, n_baseline, upgrade_needed
     """
-    from teletraffic import erlang_b, dimension_channels
+    from src.teletraffic import erlang_b, dimension_channels
 
     horizon = scenario.get("forecasting", {}).get(
         "horizon_months", DEFAULT_HORIZON_MONTHS
