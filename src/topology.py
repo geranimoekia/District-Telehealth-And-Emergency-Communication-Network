@@ -293,4 +293,8 @@ if __name__ == "__main__":
     config = load_config("scenario.yaml")
     G      = build_topology(config)
     topology_summary(G)
+<<<<<<< HEAD
     draw_topology(G)
+=======
+    draw_topology(G)
+>>>>>>> origin/dev/student2-pako
