@@ -1,0 +1,297 @@
+{
+  "coverage": {
+    "outdoor_pct": 2.9,
+    "indoor_pct": 0.8,
+    "threshold_outdoor_dbm": -90.0,
+    "threshold_indoor_dbm": -80.0,
+    "max_rx_dbm": -40.6,
+    "min_rx_dbm": -124.3,
+    "median_rx_dbm": -112.0
+  },
+  "site_link_budgets": [
+    {
+      "site_id": "BS1",
+      "received_signal_dbm": -78.2,
+      "path_loss_db": 136.2,
+      "link_margin_db": 11.8,
+      "coverage_radius_km": 2.163,
+      "link_quality": "good"
+    },
+    {
+      "site_id": "BS2",
+      "received_signal_dbm": -78.2,
+      "path_loss_db": 136.2,
+      "link_margin_db": 11.8,
+      "coverage_radius_km": 2.163,
+      "link_quality": "good"
+    },
+    {
+      "site_id": "BS3",
+      "received_signal_dbm": -78.2,
+      "path_loss_db": 136.2,
+      "link_margin_db": 11.8,
+      "coverage_radius_km": 2.163,
+      "link_quality": "good"
+    },
+    {
+      "site_id": "BS4",
+      "received_signal_dbm": -78.2,
+      "path_loss_db": 136.2,
+      "link_margin_db": 11.8,
+      "coverage_radius_km": 2.163,
+      "link_quality": "good"
+    },
+    {
+      "site_id": "BS5",
+      "received_signal_dbm": -78.2,
+      "path_loss_db": 136.2,
+      "link_margin_db": 11.8,
+      "coverage_radius_km": 2.163,
+      "link_quality": "good"
+    }
+  ],
+  "backhaul": [
+    {
+      "site": "BS1",
+      "primary_dist_km": 22.67,
+      "backup_dist_km": 16.97,
+      "primary_rx_dbm": -45.5,
+      "primary_margin_db": 39.5,
+      "primary_status": "PASS",
+      "backup_rx_dbm": -42.9,
+      "backup_margin_db": 42.1,
+      "backup_status": "PASS",
+      "rain_attenuation_db": 6.33,
+      "margin_after_rain_db": 33.2,
+      "demand_mbps": 2.058,
+      "capacity_mbps": 100,
+      "link_utilisation": 0.02058,
+      "link_status": "good",
+      "primary_link": "BS1\u2192CR-1",
+      "backup_link": "BS1\u2192CR-2",
+      "calls_routed_primary": 1,
+      "calls_routed_backup": 0
+    },
+    {
+      "site": "BS2",
+      "primary_dist_km": 22.67,
+      "backup_dist_km": 25.06,
+      "primary_rx_dbm": -45.5,
+      "primary_margin_db": 39.5,
+      "primary_status": "PASS",
+      "backup_rx_dbm": -46.3,
+      "backup_margin_db": 38.7,
+      "backup_status": "PASS",
+      "rain_attenuation_db": 6.33,
+      "margin_after_rain_db": 33.2,
+      "demand_mbps": 2.058,
+      "capacity_mbps": 100,
+      "link_utilisation": 0.02058,
+      "link_status": "good",
+      "primary_link": "BS2\u2192CR-1",
+      "backup_link": "BS2\u2192CR-2",
+      "calls_routed_primary": 1,
+      "calls_routed_backup": 0
+    },
+    {
+      "site": "BS3",
+      "primary_dist_km": 22.67,
+      "backup_dist_km": 21.63,
+      "primary_rx_dbm": -45.5,
+      "primary_margin_db": 39.5,
+      "primary_status": "PASS",
+      "backup_rx_dbm": -45.1,
+      "backup_margin_db": 39.9,
+      "backup_status": "PASS",
+      "rain_attenuation_db": 6.33,
+      "margin_after_rain_db": 33.2,
+      "demand_mbps": 2.058,
+      "capacity_mbps": 100,
+      "link_utilisation": 0.02058,
+      "link_status": "good",
+      "primary_link": "BS3\u2192CR-1",
+      "backup_link": "BS3\u2192CR-2",
+      "calls_routed_primary": 1,
+      "calls_routed_backup": 0
+    },
+    {
+      "site": "BS4",
+      "primary_dist_km": 17.0,
+      "backup_dist_km": 20.62,
+      "primary_rx_dbm": -43.0,
+      "primary_margin_db": 42.0,
+      "primary_status": "PASS",
+      "backup_rx_dbm": -44.6,
+      "backup_margin_db": 40.4,
+      "backup_status": "PASS",
+      "rain_attenuation_db": 4.75,
+      "margin_after_rain_db": 37.2,
+      "demand_mbps": 2.058,
+      "capacity_mbps": 100,
+      "link_utilisation": 0.02058,
+      "link_status": "good",
+      "primary_link": "BS4\u2192CR-1",
+      "backup_link": "BS4\u2192CR-2",
+      "calls_routed_primary": 1,
+      "calls_routed_backup": 0
+    },
+    {
+      "site": "BS5",
+      "primary_dist_km": 22.67,
+      "backup_dist_km": 28.43,
+      "primary_rx_dbm": -45.5,
+      "primary_margin_db": 39.5,
+      "primary_status": "PASS",
+      "backup_rx_dbm": -47.4,
+      "backup_margin_db": 37.6,
+      "backup_status": "PASS",
+      "rain_attenuation_db": 6.33,
+      "margin_after_rain_db": 33.2,
+      "demand_mbps": 2.058,
+      "capacity_mbps": 100,
+      "link_utilisation": 0.02058,
+      "link_status": "good",
+      "primary_link": "BS5\u2192CR-1",
+      "backup_link": "BS5\u2192CR-2",
+      "calls_routed_primary": 1,
+      "calls_routed_backup": 0
+    }
+  ],
+  "reuse": {
+    "reuse_factor": 4,
+    "D_R_ratio": 3.464,
+    "channels_per_cell": 1.0,
+    "approx_SIR_dB": 3.0,
+    "spectral_efficiency": 0.25
+  },
+  "sectorization": {
+    "omni": {
+      "reuse_factor": 4,
+      "D_R_ratio": 3.464,
+      "channels_per_cell": 1.0,
+      "approx_SIR_dB": 3.0,
+      "spectral_efficiency": 0.25
+    },
+    "sectorized": {
+      "reuse_factor": 1,
+      "D_R_ratio": 1.732,
+      "channels_per_cell": 4.0,
+      "approx_SIR_dB": -3.0,
+      "spectral_efficiency": 1.0
+    },
+    "sectors": 3,
+    "capacity_gain_x": 12.0
+  },
+  "gos": {
+    "per_site": [
+      {
+        "site": "BS1",
+        "voice_offered_erl": 0.75,
+        "voice_channels_N": 4,
+        "voice_blocking": 0.006234,
+        "video_offered_erl": 0.67,
+        "video_channels_N": 4,
+        "video_blocking": 0.004299,
+        "gos_target": 0.02,
+        "gos_met": true,
+        "link_preference": "primary"
+      },
+      {
+        "site": "BS2",
+        "voice_offered_erl": 0.75,
+        "voice_channels_N": 4,
+        "voice_blocking": 0.006234,
+        "video_offered_erl": 0.67,
+        "video_channels_N": 4,
+        "video_blocking": 0.004299,
+        "gos_target": 0.02,
+        "gos_met": true,
+        "link_preference": "primary"
+      },
+      {
+        "site": "BS3",
+        "voice_offered_erl": 0.75,
+        "voice_channels_N": 4,
+        "voice_blocking": 0.006234,
+        "video_offered_erl": 0.67,
+        "video_channels_N": 4,
+        "video_blocking": 0.004299,
+        "gos_target": 0.02,
+        "gos_met": true,
+        "link_preference": "primary"
+      },
+      {
+        "site": "BS4",
+        "voice_offered_erl": 0.75,
+        "voice_channels_N": 4,
+        "voice_blocking": 0.006234,
+        "video_offered_erl": 0.67,
+        "video_channels_N": 4,
+        "video_blocking": 0.004299,
+        "gos_target": 0.02,
+        "gos_met": true,
+        "link_preference": "primary"
+      },
+      {
+        "site": "BS5",
+        "voice_offered_erl": 0.75,
+        "voice_channels_N": 4,
+        "voice_blocking": 0.006234,
+        "video_offered_erl": 0.67,
+        "video_channels_N": 4,
+        "video_blocking": 0.004299,
+        "gos_target": 0.02,
+        "gos_met": true,
+        "link_preference": "primary"
+      }
+    ],
+    "gos_target": 0.02,
+    "worst_site": "BS1",
+    "worst_blocking": 0.006234,
+    "all_gos_met": true
+  },
+  "signaling": {
+    "total_bhca": 115.0,
+    "total_signaling_bps": 51.111,
+    "worst_setup_delay_ms": 14.0,
+    "worst_setup_site": "BS3",
+    "all_kpis_met": true
+  },
+  "improvement": {
+    "baseline": {
+      "outdoor_pct": 2.8,
+      "indoor_pct": 0.8,
+      "threshold_outdoor_dbm": -90.0,
+      "threshold_indoor_dbm": -80.0,
+      "max_rx_dbm": -57.6,
+      "min_rx_dbm": -124.2,
+      "median_rx_dbm": -112.0
+    },
+    "add_6th_site": {
+      "outdoor_pct": 3.3,
+      "indoor_pct": 0.9,
+      "threshold_outdoor_dbm": -90.0,
+      "threshold_indoor_dbm": -80.0,
+      "max_rx_dbm": -57.6,
+      "min_rx_dbm": -124.2,
+      "median_rx_dbm": -111.9
+    },
+    "raise_height_40m": {
+      "outdoor_pct": 3.8,
+      "indoor_pct": 1.0,
+      "threshold_outdoor_dbm": -90.0,
+      "threshold_indoor_dbm": -80.0,
+      "max_rx_dbm": -56.4,
+      "min_rx_dbm": -121.4,
+      "median_rx_dbm": -109.5
+    }
+  },
+  "breaking_point": {
+    "first_failure_alpha": 1.5,
+    "first_failure_kpi": "voice_blocking_probability",
+    "first_failure_value": 0.021798,
+    "first_failure_target": 0.02,
+    "n_baseline": 4,
+    "bottleneck_description": "First KPI failure at load multiplier alpha=1.5. KPI 'voice_blocking_probability' exceeded its target (value=0.0218, target=0.02). Baseline channel count was N=4 per site. Voice offered load at failure: 1.12 Erlang."
+  }
+}
