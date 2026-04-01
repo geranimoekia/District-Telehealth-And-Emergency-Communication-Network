@@ -133,7 +133,7 @@ def forecast_erlang(scenario: dict) -> pd.DataFrame:
         Columns: year, offered_load_erl, blocking_prob, blocking_kpi_met,
                  channels_required, n_baseline, upgrade_needed
     """
-    from teletraffic import erlang_b, dimension_channels
+    from src.teletraffic import erlang_b, dimension_channels
 
     fc      = scenario["forecasting"]
     r       = fc["annual_growth_rate"]
@@ -177,7 +177,7 @@ def forecast_trunk_erlang(scenario: dict) -> pd.DataFrame:
         Columns: year, trunk_offered_erl, blocking_prob, kpi_met,
                  channels_required, n_baseline, upgrade_needed
     """
-    from teletraffic import erlang_b, dimension_channels
+    from src.teletraffic import erlang_b, dimension_channels
 
     fc      = scenario["forecasting"]
     r       = fc["annual_growth_rate"]

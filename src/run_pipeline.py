@@ -36,7 +36,7 @@ from traffic      import load_scenario, compute_traffic_matrix, compute_trunk_de
 from teletraffic  import (run_teletraffic, compute_signaling_load,
                            signaling_summary, stress_sweep, find_breaking_point)
 from propagation  import site_link_budget_table
-from wireless     import (
+from src.wireless import (
     build_coverage_grid, coverage_statistics, plot_coverage_heatmap,
     plot_path_loss_curves, frequency_reuse_cluster, sectorization_analysis,
     plot_reuse_pattern, validate_backhaul_capacity, plot_link_usage,

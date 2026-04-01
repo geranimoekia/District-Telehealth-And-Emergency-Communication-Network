@@ -785,7 +785,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 try:
-    from topology import load_config, build_topology, get_positions, draw_topology
+    from src.topology import load_config, build_topology, get_positions, draw_topology
 except ImportError as e:
     st.warning(f"Could not import modules: {e}")
 

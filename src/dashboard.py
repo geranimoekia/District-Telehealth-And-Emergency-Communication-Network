@@ -35,12 +35,12 @@ import matplotlib.colors as mcolors
 sys.path.insert(0, os.path.dirname(__file__))
 
 from traffic     import load_scenario, compute_traffic_matrix, compute_trunk_demand, stress_bandwidth_sweep
-from teletraffic import (run_teletraffic, compute_signaling_load, signaling_summary,
+from src.teletraffic import (run_teletraffic, compute_signaling_load, signaling_summary,
                           stress_sweep, find_breaking_point, erlang_b, dimension_channels,
                           erlang_b_curve, blocking_vs_load)
 from propagation import (cost231_hata, site_link_budget_table, microwave_budget,
                           rain_attenuation_db, _coverage_radius)
-from wireless    import (build_coverage_grid, coverage_statistics, validate_backhaul_capacity,
+from src.wireless import (build_coverage_grid, coverage_statistics, validate_backhaul_capacity,
                           frequency_reuse_cluster, sectorization_analysis, grade_of_service,
                           plot_reuse_pattern)
 
@@ -806,7 +806,7 @@ st.set_page_config(
 
 @st.cache_data
 def load_scenario_cached(path: str) -> dict:
-    from traffic import load_scenario
+    from src.traffic import load_scenario
     return load_scenario(path)
 
 
@@ -870,14 +870,14 @@ st.caption(
 
 @st.cache_data
 def get_teletraffic(alpha: float):
-    from teletraffic import run_teletraffic
+    from src.teletraffic import run_teletraffic
     sc_ = load_scenario_cached(SCENARIO_PATH)
     return run_teletraffic(sc_, alpha)
 
 
 @st.cache_data
 def get_traffic_matrix(alpha: float):
-    from traffic import compute_traffic_matrix, compute_offered_load
+    from src.traffic import compute_traffic_matrix, compute_offered_load
     sc_ = load_scenario_cached(SCENARIO_PATH)
     return compute_traffic_matrix(sc_, alpha), compute_offered_load(sc_, alpha)
 

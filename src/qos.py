@@ -46,7 +46,7 @@ import numpy as np
 import pandas as pd
 
 # ── Project imports ──────────────────────────────────────────────────────────
-from topology import build_topology, NODES
+from src.topology import build_topology, NODES
 from routing  import shortest_path, link_utilisation, simulate_failure
 from traffic  import (
     TrafficGenerator,

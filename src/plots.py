@@ -67,7 +67,7 @@ def fig_erlang_b_curve(scenario: dict) -> plt.Figure:
     Blocking probability vs number of circuits N for each traffic class.
     Marks the dimensioned operating point for each class.
     """
-    from teletraffic import erlang_b, dimension_channels
+    from src.teletraffic import erlang_b, dimension_channels
 
     traffic_cfg = scenario["traffic"]
     classes = {
@@ -116,7 +116,7 @@ def fig_blocking_vs_load(scenario: dict) -> plt.Figure:
     Blocking probability vs offered load for the baseline circuit count N.
     Shows the operating point and KPI boundary.
     """
-    from teletraffic import erlang_b, dimension_channels
+    from src.teletraffic import erlang_b, dimension_channels
 
     cfg      = scenario["traffic"]["voice"]
     A0       = cfg["offered_load_erl"]
@@ -159,7 +159,7 @@ def fig_p95_delay_vs_alpha(scenario: dict) -> plt.Figure:
     P95 one-way delay vs load multiplier α for telemetry and video.
     Shows KPI targets as horizontal dashed lines.
     """
-    from teletraffic import evaluate_delay_kpis
+    from src.teletraffic import evaluate_delay_kpis
 
     alphas     = scenario["simulation"]["load_multiplier_steps"]
     tel_target = scenario["traffic"]["telemetry"]["kpi_delay_p95_ms"]
@@ -203,7 +203,7 @@ def fig_traffic_matrix_bar(scenario: dict, load_multiplier: float = 1.0) -> plt.
     """
     Stacked bar chart of traffic demand (Mbps) per BS site per service class.
     """
-    from traffic import compute_traffic_matrix
+    from src.traffic import compute_traffic_matrix
 
     matrix = compute_traffic_matrix(scenario, load_multiplier)
     sites  = matrix["site"].tolist()
@@ -342,7 +342,7 @@ def fig_stress_sweep(scenario: dict) -> plt.Figure:
     Combined stress sweep showing voice blocking and P95 delays
     against their KPI targets across load multipliers.
     """
-    from teletraffic import stress_sweep
+    from src.teletraffic import stress_sweep
 
     sweep      = stress_sweep(scenario)
     alphas     = sweep["load_multiplier"].tolist()
