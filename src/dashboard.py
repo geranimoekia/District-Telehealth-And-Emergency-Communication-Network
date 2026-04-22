@@ -3,7 +3,7 @@ District Telehealth & Emergency Communication Network Management System
 ========================================================================
 TELE 527 · Group 1 · BIUST · Palapye / Serowe, Botswana
 
-Run:  streamlit run dashboard.py
+Run:  streamlit run src/dashboard.py
 """
 
 import streamlit as st
