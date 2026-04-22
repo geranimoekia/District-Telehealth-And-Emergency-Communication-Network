@@ -1,0 +1,16 @@
+site,service_class,arrival_rate_per_hour,holding_time_s,offered_load_erl
+BS1,telemetry,30.0,60,0.5
+BS1,voice,15.0,180,0.75
+BS1,video,8.0,3600,8.0
+BS2,telemetry,30.0,60,0.5
+BS2,voice,15.0,180,0.75
+BS2,video,8.0,3600,8.0
+BS3,telemetry,30.0,60,0.5
+BS3,voice,15.0,180,0.75
+BS3,video,8.0,3600,8.0
+BS4,telemetry,30.0,60,0.5
+BS4,voice,15.0,180,0.75
+BS4,video,8.0,3600,8.0
+BS5,telemetry,30.0,60,0.5
+BS5,voice,15.0,180,0.75
+BS5,video,8.0,3600,8.0
