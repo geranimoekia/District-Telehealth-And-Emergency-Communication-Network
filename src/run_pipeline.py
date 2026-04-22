@@ -29,7 +29,14 @@ import sys
 import yaml
 import json
 
-sys.path.insert(0, os.path.dirname(__file__))
+SRC_DIR = os.path.abspath(os.path.dirname(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SRC_DIR, ".."))
+for path in (PROJECT_ROOT, SRC_DIR):
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 import pandas as pd
 from traffic      import load_scenario, compute_traffic_matrix, compute_trunk_demand
