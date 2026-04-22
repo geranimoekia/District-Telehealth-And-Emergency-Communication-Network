@@ -1,3 +1,4 @@
 class,samples,mean_ms,p50_ms,p95_ms,p99_ms,kpi_target_ms,kpi_percentile,kpi_met
-telemetry,20000,8.22,8.028,9.043,9.079,50,P99,True
-video,20000,9.72,9.415,12.934,15.452,150,P95,True
+telemetry,20000,8.22,8.028,9.043,9.079,50.0,P99,True
+video,20000,9.72,9.415,12.934,15.452,150.0,P95,True
+voice,20000,467.324,13.0,14.0,14.0,150.0,P95,True
