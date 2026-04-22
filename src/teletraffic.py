@@ -586,12 +586,31 @@ def find_breaking_point(scenario: dict) -> dict:
         kpi_value  = first_fail["telemetry_p95_ms"]
         kpi_target = scenario["traffic"]["telemetry"]["kpi_delay_p95_ms"]
 
+    # Identify the bottleneck resource by KPI type
+    if kpi_name == "video_p95_delay_ms":
+        bottleneck_resource = (
+            "BS→CR-1 backhaul video WFQ channel (40 Mbps effective capacity). "
+            "Video offered load exceeds the WFQ share, driving rho to 1.0 and "
+            "P95 queuing delay to infinity on all backhaul links simultaneously."
+        )
+    elif kpi_name == "voice_blocking_probability":
+        bottleneck_resource = (
+            f"Per-site voice circuit pool (N={first_fail['n_baseline']} circuits). "
+            "Voice offered load exceeds the dimensioned circuit count, driving "
+            "blocking probability above the 2% KPI."
+        )
+    else:
+        bottleneck_resource = (
+            "BS→CR-1 backhaul telemetry strict-priority channel (100 Mbps). "
+            "Telemetry arrival rate saturates the full link capacity."
+        )
+
     desc = (
         f"First KPI failure at load multiplier alpha={alpha:.1f}. "
-        f"KPI '{kpi_name}' exceeded its target "
+        f"Failing KPI: '{kpi_name}' "
         f"(value={kpi_value:.4f}, target={kpi_target}). "
-        f"Baseline channel count was N={first_fail['n_baseline']} per site. "
-        f"Voice offered load at failure: {first_fail['voice_offered_erl']:.2f} Erlang."
+        f"Bottleneck: {bottleneck_resource} "
+        f"Voice offered load at failure point: {first_fail['voice_offered_erl']:.2f} Erlang."
     )
 
     return {

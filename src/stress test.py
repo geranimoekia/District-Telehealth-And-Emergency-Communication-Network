@@ -166,7 +166,8 @@ def breaking_point_report(scenario: dict) -> dict:
     dict with keys:
         sweep, alpha_fail_voice, alpha_fail_video, alpha_fail_telemetry,
         first_failing_class, first_failing_alpha, failure_order,
-        n_baseline, bottleneck_description, ordered_summary
+        n_baseline, bottleneck_description, ordered_summary,
+        per_alpha_worst_class
     """
     from teletraffic import find_breaking_point, _baseline_channel_count
 
@@ -175,22 +176,32 @@ def breaking_point_report(scenario: dict) -> dict:
     N_base = _baseline_channel_count(scenario)
 
     def _fmt_alpha(a):
-        return f"{a:.1f}" if math.isfinite(a) else ">max"
+        return f"{a:.2f}" if math.isfinite(a) else ">5.0 (never fails)"
 
     ordered = " → ".join(
         f"{cls} (α={_fmt_alpha(bp[f'alpha_fail_{cls}'])})"
         for cls in bp["failure_order"]
     )
 
-    desc = (
-        f"Under fixed baseline capacity (N_voice = {N_base} circuits per site, "
-        f"100 Mbps backhaul per BS), the first KPI to fail is "
-        f"'{bp['first_failing_class']}' at α = {_fmt_alpha(bp['first_failing_alpha'])}. "
-        f"The full failure order is: {ordered}. "
-        f"This is consistent with the QoS design: strict-priority telemetry (DSCP 46) "
-        f"is protected, while video — with the largest bitrate share and a WFQ "
-        f"weight of only 0.40 — saturates first."
-    )
+    # Build a per-alpha worst-class summary (Requirement 4)
+    sweep = bp["sweep"]
+    per_alpha = []
+    for _, row in sweep.iterrows():
+        if not row["video_kpi_met"]:
+            worst = "video (P95 delay saturated — WFQ backhaul bottleneck)"
+        elif not row["voice_kpi_met"]:
+            worst = "voice (blocking > 2% — circuit pool exhausted)"
+        elif not row["telemetry_kpi_met"]:
+            worst = "telemetry (P95 delay — strict-priority link saturated)"
+        else:
+            worst = "none (all KPIs pass)"
+        per_alpha.append({
+            "alpha":              row["load_multiplier"],
+            "worst_class":        worst,
+            "all_kpis_met":       row["all_kpis_met"],
+        })
+
+    desc = fp["bottleneck_description"]
 
     return {
         "sweep":                  bp["sweep"],
@@ -203,6 +214,7 @@ def breaking_point_report(scenario: dict) -> dict:
         "n_baseline":             N_base,
         "bottleneck_description": desc,
         "ordered_summary":        ordered,
+        "per_alpha_worst_class":  per_alpha,
     }
 
 
@@ -221,27 +233,35 @@ if __name__ == "__main__":
     print(rep["sweep"].to_string(index=False))
 
     print("\n" + "=" * 70)
-    print("PER-CLASS FIRST-FAILURE ALPHAS")
+    print("REQUIREMENT 1 & 2 — First failing KPI and exact alpha")
     print("=" * 70)
-    print(f"  Voice     blocking > 2%   : α = {rep['alpha_fail_voice']}")
-    print(f"  Video     P95 > 150 ms    : α = {rep['alpha_fail_video']}")
-    print(f"  Telemetry P95 >  50 ms    : α = {rep['alpha_fail_telemetry']}")
-    print(f"\n  Failure order : {rep['ordered_summary']}")
-    print(f"  N_baseline    : {rep['n_baseline']}")
-    print("\n" + rep["bottleneck_description"])
+    print(f"  First failing class  : {rep['first_failing_class']}")
+    print(f"  First failing alpha  : {rep['first_failing_alpha']}")
+    print(f"  alpha_fail_video     : {rep['alpha_fail_video']}")
+    print(f"  alpha_fail_voice     : {rep['alpha_fail_voice']}")
+    print(f"  alpha_fail_telemetry : {rep['alpha_fail_telemetry']}")
 
-    # --- Required spec assertion -------------------------------------
     print("\n" + "=" * 70)
-    print("SPEC ASSERTION — failure order (video → voice → telemetry)")
+    print("REQUIREMENT 3 — First bottleneck (link / resource)")
     print("=" * 70)
+    print(f"  {rep['bottleneck_description']}")
+
+    print("\n" + "=" * 70)
+    print("REQUIREMENT 4 — Worst class at each alpha step")
+    print("=" * 70)
+    for row in rep["per_alpha_worst_class"]:
+        status = "ALL PASS" if row["all_kpis_met"] else "KPI FAIL"
+        print(f"  alpha={row['alpha']:.2f}  [{status}]  worst: {row['worst_class']}")
+
+    print("\n" + "=" * 70)
+    print("CRITICAL REQUIREMENT — failure order (video → voice → telemetry)")
+    print("=" * 70)
+    print(f"  {rep['ordered_summary']}")
     try:
         test_failure_order(sc)
-        print("  [OK] Failure order is video → voice → telemetry "
-              "(telemetry survives longest).")
+        print("  [PASS] Telemetry is last — QoS scheduler correctly configured.")
     except AssertionError as e:
         print(f"  [FAIL] {e}")
-        print("\n  Hint: check qos.py WFQ weights and make sure telemetry "
-              "is strict-priority (DSCP 46).")
 
     # --- CSV export --------------------------------------------------
     out_dir = os.path.join(os.path.dirname(__file__), "..", "outputs")
@@ -257,9 +277,17 @@ if __name__ == "__main__":
         "first_failing_class":  rep["first_failing_class"],
         "first_failing_alpha":  rep["first_failing_alpha"],
         "n_baseline":           rep["n_baseline"],
+        "bottleneck":           rep["bottleneck_description"],
     }]).to_csv(
         os.path.join(out_dir, "stress_test_per_class_failure.csv"), index=False
     )
+    pd.DataFrame(rep["per_alpha_worst_class"]).to_csv(
+        os.path.join(out_dir, "stress_test_worst_class_per_alpha.csv"), index=False
+    )
     print("\nCSV files saved to outputs/:")
-    for name in ["stress_test_sweep.csv", "stress_test_per_class_failure.csv"]:
+    for name in [
+        "stress_test_sweep.csv",
+        "stress_test_per_class_failure.csv",
+        "stress_test_worst_class_per_alpha.csv",
+    ]:
         print(f"  {name}")
