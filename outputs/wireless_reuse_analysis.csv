@@ -1,0 +1,5 @@
+timestamp_utc,cluster_size_K,D_R_ratio,sir_omni_dB,sir_3sector_dB,sir_6sector_dB,sir_min_required_dB,omni_passes,sector3_passes,sector6_passes,channels_per_cell_omni,channels_per_sector_3s,channels_per_sector_6s,path_loss_exponent,interferers_omni,interferers_3sector,interferers_6sector,note
+2026-04-22T14:25:04.114Z,1,1.7321,1.76,6.53,9.54,18.0,False,False,False,200,66,33,4,6,2,1,K=7 recommended — smallest K meeting SIR ≥ 18 dB for omni
+2026-04-22T14:25:04.115Z,3,3.0,11.3,16.07,19.08,18.0,False,False,True,66,22,11,4,6,2,1,K=7 recommended — smallest K meeting SIR ≥ 18 dB for omni
+2026-04-22T14:25:04.115Z,4,3.4641,13.8,18.57,21.58,18.0,False,True,True,50,16,8,4,6,2,1,K=7 recommended — smallest K meeting SIR ≥ 18 dB for omni
+2026-04-22T14:25:04.115Z,7,4.5826,18.66,23.43,26.44,18.0,True,True,True,28,9,4,4,6,2,1,K=7 recommended — smallest K meeting SIR ≥ 18 dB for omni
