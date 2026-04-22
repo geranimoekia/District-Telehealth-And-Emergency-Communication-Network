@@ -1,0 +1,9 @@
+timestamp_utc,tx_power_dbm,outdoor_cov_pct,kpi_75pct_fail,breaking_point,test_type
+2026-04-22T14:25:10.605Z,30.0,0.845,True,True,tx_power_sweep
+2026-04-22T14:25:10.679Z,33.0,1.253,True,False,tx_power_sweep
+2026-04-22T14:25:10.760Z,36.0,1.856,True,False,tx_power_sweep
+2026-04-22T14:25:10.852Z,39.0,2.74,True,False,tx_power_sweep
+2026-04-22T14:25:10.999Z,43.0,4.641,True,False,tx_power_sweep
+2026-04-22T14:25:11.087Z,46.0,6.86,True,False,tx_power_sweep
+2026-04-22T14:25:11.175Z,49.0,10.071,True,False,tx_power_sweep
+2026-04-22T14:25:11.243Z,43.0,3.979,True,False,site_removal_BS5
