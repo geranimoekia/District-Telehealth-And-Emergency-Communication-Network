@@ -1,2 +1,0 @@
-first_failure_alpha,first_failure_kpi,first_failure_value,first_failure_target,n_baseline,bottleneck_description
-1.5,voice_blocking_probability,0.021798,0.02,4,"First KPI failure at load multiplier alpha=1.5. KPI 'voice_blocking_probability' exceeded its target (value=0.0218, target=0.02). Baseline channel count was N=4 per site. Voice offered load at failure: 1.12 Erlang."

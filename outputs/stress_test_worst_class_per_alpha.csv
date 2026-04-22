@@ -1,0 +1,10 @@
+alpha,worst_class,all_kpis_met
+1.0,none (all KPIs pass),True
+1.25,video (P95 delay saturated — WFQ backhaul bottleneck),False
+1.5,video (P95 delay saturated — WFQ backhaul bottleneck),False
+2.0,video (P95 delay saturated — WFQ backhaul bottleneck),False
+2.5,video (P95 delay saturated — WFQ backhaul bottleneck),False
+3.0,video (P95 delay saturated — WFQ backhaul bottleneck),False
+3.5,video (P95 delay saturated — WFQ backhaul bottleneck),False
+4.0,video (P95 delay saturated — WFQ backhaul bottleneck),False
+5.0,video (P95 delay saturated — WFQ backhaul bottleneck),False

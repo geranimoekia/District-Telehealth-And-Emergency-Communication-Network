@@ -1,0 +1,10 @@
+load_multiplier,voice_offered_erl,n_baseline,voice_blocking,voice_kpi_met,telemetry_p95_ms,telemetry_kpi_met,video_p95_ms,video_kpi_met,all_kpis_met
+1.0,0.75,4,0.006234,True,9.0,True,13.159,True,True
+1.25,0.9375,4,0.01264,True,9.0,True,inf,False,False
+1.5,1.125,4,0.021798,False,9.0,True,inf,False,False
+2.0,1.5,4,0.047957,False,9.0,True,inf,False,False
+2.5,1.875,4,0.082445,False,9.0,True,inf,False,False
+3.0,2.25,4,0.122076,False,9.0,True,inf,False,False
+3.5,2.625,4,0.163998,False,9.0,True,inf,False,False
+4.0,3.0,4,0.206107,False,9.0,True,inf,False,False
+5.0,3.75,4,0.286002,False,9.0,True,inf,False,False

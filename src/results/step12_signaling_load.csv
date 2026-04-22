@@ -1,6 +1,0 @@
-site,bhca,signaling_msgs_ph,signaling_load_bps,call_setup_delay_ms,kpi_target_ms,kpi_met,primary_link,backup_link,calls_routed_primary,calls_routed_backup,voice_arrival_rate_ph,video_arrival_rate_ph,link_selection
-BS1,23.0,46.0,10.2222,13.0,50,True,BS1→CR-1,BS1→CR-2,All (primary UP),0,15,8,primary
-BS2,23.0,46.0,10.2222,13.0,50,True,BS2→CR-1,BS2→CR-2,All (primary UP),0,15,8,primary
-BS3,23.0,46.0,10.2222,14.0,50,True,BS3→CR-1,BS3→CR-2,All (primary UP),0,15,8,primary
-BS4,23.0,46.0,10.2222,12.0,50,True,BS4→CR-1,BS4→CR-2,All (primary UP),0,15,8,primary
-BS5,23.0,46.0,10.2222,14.0,50,True,BS5→CR-1,BS5→CR-2,All (primary UP),0,15,8,primary
