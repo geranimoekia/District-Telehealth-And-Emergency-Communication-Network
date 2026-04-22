@@ -1,6 +1,0 @@
-site_id,received_signal_dbm,path_loss_db,link_margin_db,coverage_radius_km,link_quality
-BS1,-101.2,136.2,-16.2,0.347,poor
-BS2,-101.2,136.2,-16.2,0.347,poor
-BS3,-101.2,136.2,-16.2,0.347,poor
-BS4,-101.2,136.2,-16.2,0.347,poor
-BS5,-101.2,136.2,-16.2,0.347,poor

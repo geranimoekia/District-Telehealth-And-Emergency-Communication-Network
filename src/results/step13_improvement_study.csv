@@ -1,4 +1,0 @@
-scenario,description,outdoor_coverage_pct,indoor_coverage_pct,outdoor_gain_pp,indoor_gain_pp,outdoor_threshold_dbm
-baseline,"Baseline (5 sites, 30 m)",2.8,0.8,0.0,0.0,-90.0
-add_6th_site,"Add 6th site at south (25,2 km)",3.3,0.9,0.5,0.1,-90.0
-raise_height_40m,Raise antenna height → 40 m,3.8,1.0,1.0,0.2,-90.0

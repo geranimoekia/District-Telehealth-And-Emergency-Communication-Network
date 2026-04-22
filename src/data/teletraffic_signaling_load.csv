@@ -1,6 +1,0 @@
-site,bhca,signaling_msgs_ph,signaling_load_bps,call_setup_delay_ms,kpi_target_ms,kpi_met
-BS1,23.0,46.0,10.2222,13.0,50,True
-BS2,23.0,46.0,10.2222,13.0,50,True
-BS3,23.0,46.0,10.2222,14.0,50,True
-BS4,23.0,46.0,10.2222,12.0,50,True
-BS5,23.0,46.0,10.2222,14.0,50,True
