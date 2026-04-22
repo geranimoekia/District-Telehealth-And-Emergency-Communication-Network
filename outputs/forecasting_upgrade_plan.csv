@@ -1,4 +1,0 @@
-phase,trigger_month,order_month,trigger_metric,action
-Phase 1 — Planning,6.17,3.17,70% link utilisation,Begin capacity planning; initiate procurement for backhaul upgrades.
-Phase 2 — Backhaul action,16.23,13.23,90% link utilisation,Deploy 100 → 200 Mbps backhaul link upgrade on all 5 BS sites.
-Phase 3 — Trunk voice channels,19.0,16.0,Trunk blocking > 2% KPI,Expand backhaul trunk voice circuits to 10.

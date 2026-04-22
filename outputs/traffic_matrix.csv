@@ -1,6 +1,0 @@
-site,destination,telemetry_mbps,voice_mbps,video_mbps,total_mbps,link_capacity_mbps,link_utilisation
-BS1,CR-1,1.7e-05,0.048,32.0,32.048,100.0,0.32048
-BS2,CR-1,1.7e-05,0.048,32.0,32.048,100.0,0.32048
-BS3,CR-1,1.7e-05,0.048,32.0,32.048,100.0,0.32048
-BS4,CR-1,1.7e-05,0.048,32.0,32.048,100.0,0.32048
-BS5,CR-1,1.7e-05,0.048,32.0,32.048,100.0,0.32048

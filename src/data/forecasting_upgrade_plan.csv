@@ -1,5 +1,0 @@
-phase,trigger_year,action,utilisation
-Phase 1 - Planning,1.1,Begin capacity planning. Initiate procurement for backhaul upgrades.,70%
-Phase 2 - Action,2.9,Upgrade backhaul links from 100 Mbps to 200 Mbps.,90%
-Phase 3 - Trunk voice channels,2.0,Expand backhaul trunk voice circuits from baseline to 10.,N/A (Erlang KPI driven — trunk blocking exceeds 2%)
-Phase 4 - Per-site voice channels,3.0,Expand per-site voice circuits from baseline to 5.,N/A (Erlang KPI driven — per-site blocking exceeds 2%)
