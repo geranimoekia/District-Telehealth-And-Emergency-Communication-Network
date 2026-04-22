@@ -1,6 +1,0 @@
-site,voice_offered_erl,voice_channels_N,voice_blocking,video_offered_erl,video_channels_N,video_blocking,gos_target,gos_met,link_preference
-BS1,0.75,4,0.006234,0.67,4,0.004299,0.02,True,primary
-BS2,0.75,4,0.006234,0.67,4,0.004299,0.02,True,primary
-BS3,0.75,4,0.006234,0.67,4,0.004299,0.02,True,primary
-BS4,0.75,4,0.006234,0.67,4,0.004299,0.02,True,primary
-BS5,0.75,4,0.006234,0.67,4,0.004299,0.02,True,primary

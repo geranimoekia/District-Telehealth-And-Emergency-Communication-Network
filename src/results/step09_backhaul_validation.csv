@@ -1,6 +1,0 @@
-site,primary_dist_km,backup_dist_km,primary_rx_dbm,primary_margin_db,primary_status,backup_rx_dbm,backup_margin_db,backup_status,rain_attenuation_db,margin_after_rain_db,demand_mbps,capacity_mbps,link_utilisation,link_status,primary_link,backup_link,calls_routed_primary,calls_routed_backup
-BS1,22.67,16.97,-45.5,39.5,PASS,-42.9,42.1,PASS,6.33,33.2,2.058,100,0.02058,good,BS1→CR-1,BS1→CR-2,1,0
-BS2,22.67,25.06,-45.5,39.5,PASS,-46.3,38.7,PASS,6.33,33.2,2.058,100,0.02058,good,BS2→CR-1,BS2→CR-2,1,0
-BS3,22.67,21.63,-45.5,39.5,PASS,-45.1,39.9,PASS,6.33,33.2,2.058,100,0.02058,good,BS3→CR-1,BS3→CR-2,1,0
-BS4,17.0,20.62,-43.0,42.0,PASS,-44.6,40.4,PASS,4.75,37.2,2.058,100,0.02058,good,BS4→CR-1,BS4→CR-2,1,0
-BS5,22.67,28.43,-45.5,39.5,PASS,-47.4,37.6,PASS,6.33,33.2,2.058,100,0.02058,good,BS5→CR-1,BS5→CR-2,1,0

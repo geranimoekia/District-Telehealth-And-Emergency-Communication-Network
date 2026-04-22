@@ -1,2 +1,0 @@
-carrier_frequency_mhz,base_station_height_m,mobile_height_m,shadow_fading_margin_db,body_loss_db,indoor_penetration_loss_db,tx_power_dbm,coverage_threshold_outdoor_dbm,coverage_threshold_indoor_dbm,grid_resolution_m,district_size_km,terrain_type
-1800,30.0,1.5,8.0,3.0,10.0,43.0,-90.0,-80.0,100,50.0,suburban_rural
