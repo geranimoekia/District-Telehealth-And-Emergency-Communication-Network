@@ -1,4 +1,4 @@
-# TELE 527 — District Telehealth Network
+# TELE 527 - District Telehealth Network
 
 simulation:
   random_seed: 42
@@ -9,23 +9,21 @@ simulation:
 
 sites:
   - {name: CR-1, label: District Hospital,      type: core_router,  x_km: 25.0, y_km: 25.0}
-  - {name: CR-2, label: District Health Office,  type: core_router,  x_km: 20.0, y_km: 28.0}
-  - {name: BS1,  label: Clinic North-West,       type: base_station, x_km:  8.0, y_km: 40.0}
-  - {name: BS2,  label: Clinic North-East,       type: base_station, x_km: 42.0, y_km: 40.0}
-  - {name: BS3,  label: Clinic South-West,       type: base_station, x_km:  8.0, y_km: 10.0}
-  - {name: BS4,  label: Clinic South,            type: base_station, x_km: 25.0, y_km:  8.0}
-  - {name: BS5,  label: Clinic South-East,       type: base_station, x_km: 42.0, y_km: 10.0}
+  - {name: CR-2, label: District Health Office, type: core_router,  x_km: 20.0, y_km: 28.0}
+  - {name: BS1,  label: Clinic North-West,      type: base_station, x_km:  8.0, y_km: 40.0}
+  - {name: BS2,  label: Clinic North-East,      type: base_station, x_km: 42.0, y_km: 40.0}
+  - {name: BS3,  label: Clinic South-West,      type: base_station, x_km:  8.0, y_km: 10.0}
+  - {name: BS4,  label: Clinic South,           type: base_station, x_km: 25.0, y_km:  8.0}
+  - {name: BS5,  label: Clinic South-East,      type: base_station, x_km: 42.0, y_km: 10.0}
 
 links:
-  # Core backbone — 13 GHz microwave primary + LTE priority bearer backup
-  # REMOVED: fibre primary (replaced by 13 GHz microwave — no civil works needed)
-  # REMOVED: 7 GHz microwave backup (replaced by LTE — independent failure mode)
+  # Core backbone - 13 GHz microwave primary + LTE priority bearer backup.
   - {from: CR-1, to: CR-2, capacity_mbps: 500, delay_ms:  0.5, type: microwave_13ghz, role: primary, weight:  1, frequency_ghz: 13.0}
   - {from: CR-2, to: CR-1, capacity_mbps: 500, delay_ms:  0.5, type: microwave_13ghz, role: primary, weight:  1, frequency_ghz: 13.0}
   - {from: CR-1, to: CR-2, capacity_mbps:  30, delay_ms: 45.0, type: lte_priority,    role: backup,  weight: 10, frequency_mhz: 1800, qci_class: 65}
   - {from: CR-2, to: CR-1, capacity_mbps:  30, delay_ms: 45.0, type: lte_priority,    role: backup,  weight: 10, frequency_mhz: 1800, qci_class: 65}
 
-  # CR-1 primary links to all base stations (7 GHz microwave — unchanged)
+  # CR-1 primary links to all base stations, 7 GHz microwave.
   - {from: CR-1, to: BS1, capacity_mbps: 100, delay_ms:  8.0, type: microwave, role: primary, weight: 1}
   - {from: BS1, to: CR-1, capacity_mbps: 100, delay_ms:  8.0, type: microwave, role: primary, weight: 1}
   - {from: CR-1, to: BS2, capacity_mbps: 100, delay_ms:  8.0, type: microwave, role: primary, weight: 1}
@@ -37,7 +35,7 @@ links:
   - {from: CR-1, to: BS5, capacity_mbps: 100, delay_ms:  9.0, type: microwave, role: primary, weight: 1}
   - {from: BS5, to: CR-1, capacity_mbps: 100, delay_ms:  9.0, type: microwave, role: primary, weight: 1}
 
-  # CR-2 backup links to all base stations (Topology 5 dual-homing — unchanged)
+  # CR-2 backup links to all base stations, topology 5 dual-homing.
   - {from: CR-2, to: BS1, capacity_mbps: 100, delay_ms: 13.0, type: microwave, role: backup, weight: 5}
   - {from: BS1, to: CR-2, capacity_mbps: 100, delay_ms: 13.0, type: microwave, role: backup, weight: 5}
   - {from: CR-2, to: BS2, capacity_mbps: 100, delay_ms: 24.0, type: microwave, role: backup, weight: 5}
@@ -50,9 +48,9 @@ links:
   - {from: BS5, to: CR-2, capacity_mbps: 100, delay_ms: 26.0, type: microwave, role: backup, weight: 5}
 
 traffic:
-  telemetry: {arrival_rate_per_hour: 30, holding_time_s:  60, offered_load_erl: 0.50, packet_size_bytes: 256, dscp: 46, kpi_delay_p95_ms:   50}
+  telemetry: {arrival_rate_per_hour: 30, holding_time_s:  60, offered_load_erl: 0.50, packet_size_bytes: 256, dscp: 46, kpi_delay_p95_ms:  50}
   voice:     {arrival_rate_per_hour: 15, holding_time_s: 180, offered_load_erl: 0.75, bitrate_kbps:       64, dscp: 26, kpi_blocking_prob: 0.02}
-  video:     {arrival_rate_per_hour:  8, holding_time_s: 300, offered_load_erl: 0.67, bitrate_mbps:      3.0, dscp: 18, kpi_delay_p95_ms:  150}
+  video:     {arrival_rate_per_hour:  8, holding_time_s: 300, offered_load_erl: 0.67, bitrate_mbps:      3.0, dscp: 18, kpi_delay_p95_ms: 150}
   backhaul_trunk_erl: 3.75
 
 environment:

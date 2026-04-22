@@ -26,7 +26,7 @@ def load_config(scenario_path="scenario.yaml"):
 
 def build_topology(config):
     """
-    Build and return a NetworkX DiGraph from the scenario config.
+    Build and return a NetworkX MultiDiGraph from the scenario config.
     Nodes = sites (CR-1, CR-2, BS1-BS5)
     Edges = links with attributes: capacity_mbps, delay_ms,
             link_type, role, weight
@@ -36,7 +36,7 @@ def build_topology(config):
         lte_priority     — CR-1 <-> CR-2 backbone backup  ( 30 Mbps, QCI-65)
         microwave        — BS backhaul primary and CR-2 dual-home backup
     """
-    G = nx.DiGraph()
+    G = nx.MultiDiGraph()
 
     # Add nodes
     for site in config['sites']:
@@ -259,12 +259,12 @@ def draw_topology(G, output_path="figures/topology.png"):
                 bbox_inches='tight',
                 facecolor='#0d1117')
     plt.close()
-    print(f"Topology saved → {output_path}")
+    print(f"Topology saved -> {output_path}")
 
 
 def topology_summary(G):
     """Print a readable graph summary to the terminal."""
-    print("\n── Topology Summary ──────────────────────")
+    print("\n-- Topology Summary ----------------------")
     print(f"  Nodes : {G.number_of_nodes()}")
     print(f"  Edges : {G.number_of_edges()}")
     print(f"  Core routers  : "
@@ -286,7 +286,7 @@ def topology_summary(G):
             if d['link_type'] == 'lte_priority']
     print(f"  Backbone 13 GHz links : {len(mw13)}")
     print(f"  Backbone LTE links    : {len(lte)}")
-    print("──────────────────────────────────────────\n")
+    print("------------------------------------------\n")
 
 
 if __name__ == "__main__":
