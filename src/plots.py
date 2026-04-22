@@ -444,9 +444,90 @@ def fig_video_delay_histogram(
     return fig
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# SECTION 4 — FORECASTING FIGURES
-# ═══════════════════════════════════════════════════════════════════════════
+def fig_voice_setup_delay_histogram(
+    scenario: dict,
+    n_samples: int = 20_000,
+) -> plt.Figure:
+    """
+    Figure 8 — Histogram of per-call voice setup delay aggregated over all
+    BS sites (α = 1.0).
+
+    Voice is modelled as a circuit-switched M/M/N system (Erlang C).
+    Setup delay = M/M/N conditional waiting time + propagation + SIP
+    processing (5 ms). Two-panel layout: top panel shows the bulk of the
+    distribution tightly; bottom panel shows the full tail with annotations.
+    """
+    from delay_samples import sample_voice_delays
+    from teletraffic import erlang_b, erlang_c, dimension_channels
+
+    vox      = scenario["traffic"]["voice"]
+    A0       = vox["offered_load_erl"]
+    target_B = vox["kpi_blocking_prob"]
+    N        = dimension_channels(A0, target_B)
+    B        = erlang_b(A0, N)
+    C        = erlang_c(A0, N)
+
+    samples  = sample_voice_delays(scenario, n_samples=n_samples, alpha=1.0)
+    samples  = samples[np.isfinite(samples)]
+
+    p95  = float(np.percentile(samples, 95))
+    p99  = float(np.percentile(samples, 99))
+    mean = float(np.mean(samples))
+
+    # Tight range: show up to P99 * 1.2 in top panel
+    tight_upper = max(p99 * 1.2, 30.0)
+    tight       = samples[samples <= tight_upper]
+
+    fig, (ax_top, ax_bot) = plt.subplots(
+        2, 1, figsize=(7.5, 5.8),
+        gridspec_kw={"height_ratios": [3, 1]},
+    )
+
+    # Top panel: tight view around typical setup delays
+    ax_top.hist(tight, bins=50, color=COLOURS["voice"],
+                alpha=0.80, edgecolor="white",
+                label=f"Voice setup delay (n = {len(samples):,})")
+    ax_top.axvline(p95, color=COLOURS["voice"], linestyle="--", linewidth=1.4,
+                   label=f"P95 = {p95:.1f} ms")
+    ax_top.axvline(p99, color=COLOURS["target"], linestyle=":", linewidth=1.2,
+                   label=f"P99 = {p99:.1f} ms")
+    ax_top.set_xlim(0, tight_upper)
+    ax_top.set_ylabel("Count")
+    ax_top.set_title(
+        f"Voice Call Setup Delay — M/M/N Model\n"
+        f"(N*={N} circuits, A={A0} Erl, "
+        f"B={B*100:.2f}%, C(wait prob)={C*100:.2f}%, α = 1.0)"
+    )
+    ax_top.legend(loc="upper right", fontsize=8)
+    ax_top.text(
+        0.98, 0.60,
+        f"Erlang B blocking : {B*100:.2f}%\n"
+        f"Erlang C wait prob: {C*100:.2f}%\n"
+        f"Circuits N*       : {N}\n"
+        f"Prop range        : 7–9 ms",
+        transform=ax_top.transAxes,
+        fontsize=8, va="top", ha="right",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
+                  edgecolor="gray", alpha=0.7),
+    )
+
+    # Bottom panel: full distribution showing rare heavy-tail outliers
+    ax_bot.hist(samples, bins=200, color=COLOURS["voice"],
+                alpha=0.80, edgecolor="none")
+    ax_bot.axvline(p95, color=COLOURS["voice"], linestyle="--", linewidth=1.4,
+                   label=f"P95 = {p95:.1f} ms")
+    ax_bot.set_xlabel("Call setup delay (ms)")
+    ax_bot.set_ylabel("Count")
+    ax_bot.text(
+        0.98, 0.85,
+        f"Mean = {mean:.0f} ms (inflated by rare\nlong Erlang C waits in tail)",
+        transform=ax_bot.transAxes,
+        fontsize=7.5, va="top", ha="right", color="#555",
+    )
+    ax_bot.legend(fontsize=8)
+
+    fig.tight_layout()
+    return fig
 
 def fig_forecast_per_class(scenario: dict) -> plt.Figure:
     """
@@ -640,16 +721,17 @@ def save_all_figures(scenario: dict, output_dir: str = "figures") -> list:
     os.makedirs(output_dir, exist_ok=True)
 
     figure_fns = [
-        ("fig_erlang_b_curve.png",          fig_erlang_b_curve),
-        ("fig_blocking_vs_load.png",         fig_blocking_vs_load),
-        ("fig_p95_delay_vs_alpha.png",        fig_p95_delay_vs_alpha),
-        ("fig_stress_sweep.png",              fig_stress_sweep),
-        ("fig_traffic_matrix_bar.png",        fig_traffic_matrix_bar),
-        ("fig_telemetry_delay_cdf.png",       fig_telemetry_delay_cdf),
-        ("fig_video_delay_histogram.png",     fig_video_delay_histogram),
-        ("fig_forecast_per_class.png",        fig_forecast_per_class),
-        ("fig_erlang_forecast.png",           fig_erlang_forecast),
-        ("fig_strategy_comparison.png",       fig_strategy_comparison),
+        ("fig_erlang_b_curve.png",              fig_erlang_b_curve),
+        ("fig_blocking_vs_load.png",             fig_blocking_vs_load),
+        ("fig_p95_delay_vs_alpha.png",            fig_p95_delay_vs_alpha),
+        ("fig_stress_sweep.png",                  fig_stress_sweep),
+        ("fig_traffic_matrix_bar.png",            fig_traffic_matrix_bar),
+        ("fig_telemetry_delay_cdf.png",           fig_telemetry_delay_cdf),
+        ("fig_video_delay_histogram.png",         fig_video_delay_histogram),
+        ("fig_voice_setup_delay_histogram.png",   fig_voice_setup_delay_histogram),
+        ("fig_forecast_per_class.png",            fig_forecast_per_class),
+        ("fig_erlang_forecast.png",               fig_erlang_forecast),
+        ("fig_strategy_comparison.png",           fig_strategy_comparison),
     ]
 
     saved = []
@@ -673,7 +755,7 @@ if __name__ == "__main__":
     scenario_path = os.path.join(os.path.dirname(__file__), "..", "scenario.yaml")
     sc = load_scenario(scenario_path)
 
-    print("Generating all 10 report figures...")
+    print("Generating all 11 report figures...")
     out_dir = os.path.join(os.path.dirname(__file__), "figures")
     saved   = save_all_figures(sc, out_dir)
 

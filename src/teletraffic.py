@@ -376,64 +376,131 @@ def _mm1_p95_delay_ms(
     return round(propagation_ms + queuing_ms, 3)
 
 
+def _voice_setup_p95_ms(
+    A: float,
+    N: int,
+    holding_time_s: float,
+    propagation_ms: float,
+    percentile: float = 0.95,
+    proc_ms: float = 5.0,
+) -> float:
+    """
+    P95 voice call setup delay using the M/M/N Erlang C model.
+
+    Voice is a circuit-switched loss system (Erlang B), but for calls that
+    are NOT blocked the setup delay is:
+
+        setup_delay = Erlang-C conditional wait + propagation + SIP processing
+
+    The conditional wait time W | W > 0  for M/M/N is:
+        W | W > 0  ~  Exponential(rate = N*mu - lambda)
+
+    The unconditional CDF is:
+        P(W <= t) = 1 - C(A,N) * exp(-(N*mu - lambda) * t)
+
+    Inverting at the given percentile:
+        if percentile <= 1 - C   →  wait = 0   (immediate service)
+        else                     →  t = -ln((1 - p) / C) / (N*mu - lambda)
+
+    Parameters
+    ----------
+    A              : offered traffic in Erlangs
+    N              : number of circuits (dimensioned at alpha=1.0)
+    holding_time_s : mean call duration in seconds
+    propagation_ms : one-way BS→CR-1 propagation delay (ms)
+    percentile     : target percentile (default 0.95)
+    proc_ms        : SIP processing time at CR-1 (default 5 ms)
+
+    Returns
+    -------
+    float  — total P95 setup delay in ms
+    """
+    if A <= 0:
+        return propagation_ms + proc_ms
+
+    mu  = 1.0 / holding_time_s          # completions/s per circuit
+    lam = A * mu                         # arrival rate (calls/s)
+
+    # Erlang C probability of waiting
+    C = erlang_c(A, N)
+
+    # Rate of the conditional exponential wait distribution
+    rate_wait = N * mu - lam             # must be > 0 for stable system
+    if rate_wait <= 0:
+        return float("inf")
+
+    if percentile <= (1.0 - C):
+        # Percentile falls in the zero-wait mass
+        wait_ms = 0.0
+    else:
+        tail_prob = 1.0 - percentile
+        wait_s    = -math.log(tail_prob / C) / rate_wait
+        wait_ms   = wait_s * 1000.0
+
+    return round(wait_ms + propagation_ms + proc_ms, 3)
+
+
 def evaluate_delay_kpis(
     scenario: dict,
     load_multiplier: float = 1.0,
 ) -> pd.DataFrame:
     """
-    Evaluate P95 delay KPIs for telemetry and video at each base station.
+    Evaluate P95 delay KPIs for telemetry, voice, and video at each BS.
 
-    Modelling assumptions
-    ----------------------
-    * Each BS-to-CR-1 backhaul is 100 Mbps.
-    * Scheduler: WFQ with strict priority for telemetry (DSCP EF).
-    * Telemetry (SP): effective capacity = full link (100 Mbps).
-    * Voice:          WFQ weight 0.30 → 30 Mbps effective capacity.
-    * Video:          WFQ weight 0.40 → 40 Mbps effective capacity.
-    * Arrival rate in bps = offered_load_erl * bitrate_bps (expected active * bps per session).
-    * Telemetry arrival rate in bps = lambda_ps * packet_size_bits.
-    * Total delay = M/M/1 queuing P95 + link propagation delay (from scenario YAML).
+    Models
+    ------
+    Telemetry — Packetised M/M/1 (strict priority, full 100 Mbps link).
+    Video     — Packetised M/M/1 (WFQ 0.40 × 100 Mbps = 40 Mbps share).
+    Voice     — M/M/N Erlang C call setup delay:
+                  P95(setup) = Erlang-C conditional wait
+                               + propagation delay
+                               + 5 ms SIP processing.
+                Voice KPI is blocking (Erlang B), not delay, so the delay
+                row uses the same 50 ms reference target as telemetry for
+                reporting purposes (conservative proxy for setup delay).
 
     Parameters
     ----------
     scenario : dict
-        Loaded scenario YAML.
-    load_multiplier : float
-        Alpha multiplier for stress testing.
+    load_multiplier : float  (alpha)
 
     Returns
     -------
     pd.DataFrame
         Columns: site, service_class, offered_load_erl, arrival_rate_mbps,
-                 rho, p95_delay_ms, kpi_target_ms, kpi_met
+                 effective_cap_mbps, rho, p95_delay_ms, kpi_target_ms, kpi_met
     """
     traffic_cfg  = scenario["traffic"]
-    qos_cfg      = scenario["qos"]
     sites        = _base_stations(scenario)
     link_cap_bps = 100e6  # 100 Mbps
 
     # WFQ effective service rates (bits/s)
     wfq = {
         "telemetry": link_cap_bps,          # strict priority → full link
-        "voice":     0.30 * link_cap_bps,   # 30% weight
-        "video":     0.40 * link_cap_bps,   # 40% weight
+        "voice":     0.30 * link_cap_bps,   # 30 % weight
+        "video":     0.40 * link_cap_bps,   # 40 % weight
     }
+
+    # Voice dimensioning at alpha = 1.0 (fixed baseline N)
+    vox        = traffic_cfg["voice"]
+    A0_voice   = vox["offered_load_erl"]
+    target_B   = vox["kpi_blocking_prob"]
+    N_baseline = dimension_channels(A0_voice, target_B)
 
     rows = []
     for site in sites:
         prop_ms = _site_prop_delay_ms(scenario, site)
 
-        # --- Telemetry ---
-        tel           = traffic_cfg["telemetry"]
-        tel_pkt_bits  = tel["packet_size_bytes"] * 8
-        lam_tel_ps    = tel["arrival_rate_per_hour"] * load_multiplier / 3600.0
-        tel_arr_bps   = lam_tel_ps * tel_pkt_bits
-        tel_rho       = tel_arr_bps / wfq["telemetry"]
-        tel_p95       = _mm1_p95_delay_ms(
+        # ── Telemetry ─────────────────────────────────────────────────
+        tel          = traffic_cfg["telemetry"]
+        tel_pkt_bits = tel["packet_size_bytes"] * 8
+        lam_tel_ps   = tel["arrival_rate_per_hour"] * load_multiplier / 3600.0
+        tel_arr_bps  = lam_tel_ps * tel_pkt_bits
+        tel_rho      = tel_arr_bps / wfq["telemetry"]
+        tel_p95      = _mm1_p95_delay_ms(
             tel_arr_bps, wfq["telemetry"], prop_ms,
             packet_size_bits=tel_pkt_bits,
         )
-
         rows.append({
             "site":               site,
             "service_class":      "telemetry",
@@ -446,18 +513,38 @@ def evaluate_delay_kpis(
             "kpi_met":            tel_p95 <= tel["kpi_delay_p95_ms"],
         })
 
-        # --- Video ---
-        # Video stream is carried as standard 1500-byte Ethernet frames
-        vid            = traffic_cfg["video"]
-        vid_pkt_bits   = 1500 * 8
-        A_vid          = vid["offered_load_erl"] * load_multiplier
-        vid_arr_bps    = A_vid * vid["bitrate_mbps"] * 1e6
-        vid_rho        = vid_arr_bps / wfq["video"]
-        vid_p95        = _mm1_p95_delay_ms(
+        # ── Voice — M/M/N Erlang C setup delay ────────────────────────
+        A_vox     = A0_voice * load_multiplier
+        vox_p95   = _voice_setup_p95_ms(
+            A_vox, N_baseline, vox["holding_time_s"], prop_ms
+        )
+        # Bandwidth of active voice sessions on the WFQ share
+        vox_arr_bps = A_vox * vox["bitrate_kbps"] * 1000.0
+        vox_rho     = vox_arr_bps / wfq["voice"]
+        # Use 50 ms as a conservative setup-delay reference target
+        vox_kpi_ms  = tel["kpi_delay_p95_ms"]
+        rows.append({
+            "site":               site,
+            "service_class":      "voice",
+            "offered_load_erl":   round(A_vox, 4),
+            "arrival_rate_mbps":  round(vox_arr_bps / 1e6, 4),
+            "effective_cap_mbps": wfq["voice"] / 1e6,
+            "rho":                round(vox_rho, 6),
+            "p95_delay_ms":       vox_p95,
+            "kpi_target_ms":      vox_kpi_ms,
+            "kpi_met":            vox_p95 <= vox_kpi_ms,
+        })
+
+        # ── Video — Packetised M/M/1 on WFQ share ─────────────────────
+        vid          = traffic_cfg["video"]
+        vid_pkt_bits = 1500 * 8
+        A_vid        = vid["offered_load_erl"] * load_multiplier
+        vid_arr_bps  = A_vid * vid["bitrate_mbps"] * 1e6
+        vid_rho      = vid_arr_bps / wfq["video"]
+        vid_p95      = _mm1_p95_delay_ms(
             vid_arr_bps, wfq["video"], prop_ms,
             packet_size_bits=vid_pkt_bits,
         )
-
         rows.append({
             "site":               site,
             "service_class":      "video",
@@ -500,21 +587,35 @@ def stress_sweep(scenario: dict) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Columns: load_multiplier, voice_offered_erl, voice_blocking,
-                 voice_kpi_met, telemetry_p95_ms, telemetry_kpi_met,
+        Columns: load_multiplier, voice_offered_erl, n_baseline,
+                 voice_blocking, voice_kpi_met,
+                 voice_setup_p95_ms, voice_setup_kpi_met,
+                 telemetry_p95_ms, telemetry_kpi_met,
                  video_p95_ms, video_kpi_met, all_kpis_met
     """
     N_baseline   = _baseline_channel_count(scenario)
     voice_target = scenario["traffic"]["voice"]["kpi_blocking_prob"]
     tel_target   = scenario["traffic"]["telemetry"]["kpi_delay_p95_ms"]
     vid_target   = scenario["traffic"]["video"]["kpi_delay_p95_ms"]
+    vox_cfg      = scenario["traffic"]["voice"]
+    # Voice setup delay reference: 50 ms (same as telemetry — conservative proxy)
+    vox_setup_target = tel_target
 
     rows = []
     for alpha in scenario["simulation"]["load_multiplier_steps"]:
         # Voice blocking at fixed N_baseline
-        A_voice       = scenario["traffic"]["voice"]["offered_load_erl"] * alpha
+        A_voice       = vox_cfg["offered_load_erl"] * alpha
         voice_block   = erlang_b(A_voice, N_baseline)
         voice_kpi_met = bool(voice_block <= voice_target)
+
+        # Voice setup delay (worst site = max propagation = 9 ms)
+        worst_prop_ms  = max(
+            _site_prop_delay_ms(scenario, s) for s in _base_stations(scenario)
+        )
+        voice_setup_p95 = _voice_setup_p95_ms(
+            A_voice, N_baseline, vox_cfg["holding_time_s"], worst_prop_ms
+        )
+        voice_setup_kpi = bool(voice_setup_p95 <= vox_setup_target)
 
         # Delay KPIs (worst site across all BSs)
         delay_df      = evaluate_delay_kpis(scenario, alpha)
@@ -526,16 +627,19 @@ def stress_sweep(scenario: dict) -> pd.DataFrame:
         vid_kpi_met   = bool(worst_vid <= vid_target)
 
         rows.append({
-            "load_multiplier":   alpha,
-            "voice_offered_erl": round(A_voice, 4),
-            "n_baseline":        N_baseline,
-            "voice_blocking":    round(voice_block, 6),
-            "voice_kpi_met":     voice_kpi_met,
-            "telemetry_p95_ms":  worst_tel,
-            "telemetry_kpi_met": tel_kpi_met,
-            "video_p95_ms":      worst_vid,
-            "video_kpi_met":     vid_kpi_met,
-            "all_kpis_met":      voice_kpi_met and tel_kpi_met and vid_kpi_met,
+            "load_multiplier":      alpha,
+            "voice_offered_erl":    round(A_voice, 4),
+            "n_baseline":           N_baseline,
+            "voice_blocking":       round(voice_block, 6),
+            "voice_kpi_met":        voice_kpi_met,
+            "voice_setup_p95_ms":   voice_setup_p95,
+            "voice_setup_kpi_met":  voice_setup_kpi,
+            "telemetry_p95_ms":     worst_tel,
+            "telemetry_kpi_met":    tel_kpi_met,
+            "video_p95_ms":         worst_vid,
+            "video_kpi_met":        vid_kpi_met,
+            "all_kpis_met":         (voice_kpi_met and voice_setup_kpi
+                                     and tel_kpi_met and vid_kpi_met),
         })
 
     return pd.DataFrame(rows)
