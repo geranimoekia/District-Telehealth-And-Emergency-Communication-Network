@@ -476,7 +476,7 @@ def grade_of_service(scenario: dict,
     """
     import sys
     sys.path.insert(0, os.path.dirname(__file__))
-    from src.teletraffic import erlang_b, dimension_channels
+    from teletraffic import erlang_b, dimension_channels
 
     tc = scenario["traffic"]
     target_B = tc["voice"]["kpi_blocking_prob"]
