@@ -308,19 +308,28 @@ def _mm1_p95_delay_ms(
     service_rate_bps: float,
     propagation_ms: float = 0.0,
     percentile: float = 0.95,
+    packet_size_bits: float = 1500 * 8,
 ) -> float:
     """
-    Compute the p-th percentile of M/M/1 sojourn time, then add propagation.
+    Compute the p-th percentile of the packetised M/M/1 sojourn time,
+    then add propagation.
 
-    M/M/1 sojourn time W has mixed CDF:
+    Packetised M/M/1 rates
+    ----------------------
+        lambda (packets/s) = arrival_rate_bps / packet_size_bits
+        mu     (packets/s) = service_rate_bps / packet_size_bits
+        rho                 = lambda / mu  =  arrival_rate_bps / service_rate_bps
+
+    M/M/1 sojourn time W has the mixed CDF
         P(W = 0)   = 1 - rho           (arrives to empty system)
-        P(W <= t)  = 1 - rho*exp(-(mu-lambda)*t)   for t > 0
+        P(W <= t)  = 1 - rho * exp( -(mu - lambda) * t )   for t > 0
 
-    Inverting:
-        if percentile <= 1 - rho:  p_val = 0  (no queuing delay)
-        else:   t = -ln((1-p) / rho) / (mu - lambda)
+    Inverting the tail:
+        if percentile <= 1 - rho : queuing = 0      (no waiting)
+        else                     : t = -ln((1-p) / rho) / (mu - lambda)
+    where (mu - lambda) is in packets/second, giving t in seconds.
 
-    Total delay = queuing delay + propagation delay.
+    Total delay = propagation + queuing.
 
     Parameters
     ----------
@@ -331,28 +340,37 @@ def _mm1_p95_delay_ms(
     propagation_ms : float
         One-way link propagation delay (ms) from scenario.
     percentile : float
-        Target percentile, default 0.95 (P95).
+        Target percentile. Default 0.95 (P95).
+    packet_size_bits : float
+        Packet size used to convert bps to packets/s. Default: a standard
+        1500-byte Ethernet MTU (12 000 bits), appropriate for voice/video
+        streams and large-packet telemetry. For small sensor packets,
+        pass the telemetry packet size explicitly.
 
     Returns
     -------
     float
-        Total P95 one-way delay in milliseconds. Returns inf if overloaded.
+        Total P-th percentile one-way delay in milliseconds.
+        Returns inf if the queue is overloaded (rho >= 1).
     """
-    if service_rate_bps <= 0:
+    if service_rate_bps <= 0 or packet_size_bits <= 0:
         return float("inf")
 
     rho = arrival_rate_bps / service_rate_bps
     if rho >= 1.0:
         return float("inf")
 
-    mu_minus_lambda = service_rate_bps - arrival_rate_bps  # bits/s
+    # Convert bps to packets/s
+    lambda_pps = arrival_rate_bps / packet_size_bits
+    mu_pps     = service_rate_bps / packet_size_bits
+    mu_minus_lambda_pps = mu_pps - lambda_pps      # per second
 
     if percentile <= (1.0 - rho):
-        # The percentile falls in the zero-delay mass → pure propagation delay
+        # The percentile falls inside the zero-delay mass
         queuing_ms = 0.0
     else:
-        tail_prob  = 1.0 - percentile          # = 0.05 for P95
-        queuing_s  = -math.log(tail_prob / rho) / mu_minus_lambda
+        tail_prob  = 1.0 - percentile              # e.g. 0.05 for P95
+        queuing_s  = -math.log(tail_prob / rho) / mu_minus_lambda_pps
         queuing_ms = queuing_s * 1000.0
 
     return round(propagation_ms + queuing_ms, 3)
@@ -406,11 +424,15 @@ def evaluate_delay_kpis(
         prop_ms = _site_prop_delay_ms(scenario, site)
 
         # --- Telemetry ---
-        tel = traffic_cfg["telemetry"]
+        tel           = traffic_cfg["telemetry"]
+        tel_pkt_bits  = tel["packet_size_bytes"] * 8
         lam_tel_ps    = tel["arrival_rate_per_hour"] * load_multiplier / 3600.0
-        tel_arr_bps   = lam_tel_ps * tel["packet_size_bytes"] * 8
+        tel_arr_bps   = lam_tel_ps * tel_pkt_bits
         tel_rho       = tel_arr_bps / wfq["telemetry"]
-        tel_p95       = _mm1_p95_delay_ms(tel_arr_bps, wfq["telemetry"], prop_ms)
+        tel_p95       = _mm1_p95_delay_ms(
+            tel_arr_bps, wfq["telemetry"], prop_ms,
+            packet_size_bits=tel_pkt_bits,
+        )
 
         rows.append({
             "site":               site,
@@ -425,11 +447,16 @@ def evaluate_delay_kpis(
         })
 
         # --- Video ---
-        vid = traffic_cfg["video"]
-        A_vid         = vid["offered_load_erl"] * load_multiplier
-        vid_arr_bps   = A_vid * vid["bitrate_mbps"] * 1e6
-        vid_rho       = vid_arr_bps / wfq["video"]
-        vid_p95       = _mm1_p95_delay_ms(vid_arr_bps, wfq["video"], prop_ms)
+        # Video stream is carried as standard 1500-byte Ethernet frames
+        vid            = traffic_cfg["video"]
+        vid_pkt_bits   = 1500 * 8
+        A_vid          = vid["offered_load_erl"] * load_multiplier
+        vid_arr_bps    = A_vid * vid["bitrate_mbps"] * 1e6
+        vid_rho        = vid_arr_bps / wfq["video"]
+        vid_p95        = _mm1_p95_delay_ms(
+            vid_arr_bps, wfq["video"], prop_ms,
+            packet_size_bits=vid_pkt_bits,
+        )
 
         rows.append({
             "site":               site,
@@ -830,5 +857,3 @@ if __name__ == "__main__":
         "teletraffic_trunk_summary.csv",
     ]:
         print(f"  {name}")
-
-
