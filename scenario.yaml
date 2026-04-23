@@ -68,6 +68,11 @@ links:
   - {from: CR-2, to: BS5, capacity_mbps: 100, delay_ms: 26.0, type: microwave, role: backup, weight: 5}
   - {from: BS5, to: CR-2, capacity_mbps: 100, delay_ms: 26.0, type: microwave, role: backup, weight: 5}
 
+traffic_classes:
+  - telemetry
+  - voice
+  - video
+
 traffic:
   # Spec §4.2: telemetry lambda=30/hr, voice lambda=15/hr, video lambda=8/hr.
   telemetry: {arrival_rate_per_hour: 30, holding_time_s:   60, offered_load_erl: 0.50, packet_size_bytes: 256, dscp: 46, kpi_delay_p95_ms:  50}
