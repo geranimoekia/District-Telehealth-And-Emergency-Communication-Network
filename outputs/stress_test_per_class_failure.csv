@@ -1,0 +1,2 @@
+alpha_fail_voice,alpha_fail_video,alpha_fail_telemetry,first_failing_class,first_failing_alpha,n_baseline,bottleneck
+1.5,1.25,inf,video,1.25,4,"First KPI failure at load multiplier alpha=1.2. Failing KPI: 'video_p95_delay_ms' (value=inf, target=150). Bottleneck: BS→CR-1 backhaul video WFQ channel (40 Mbps effective capacity). Video offered load exceeds the WFQ share, driving rho to 1.0 and P95 queuing delay to infinity on all backhaul links simultaneously. Voice offered load at failure point: 0.94 Erlang."

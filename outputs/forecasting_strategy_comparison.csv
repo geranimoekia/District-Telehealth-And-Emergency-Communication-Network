@@ -1,0 +1,5 @@
+strategy,description,cost_kUSD,extended_months,cost_per_month_kUSD,rank
+1. Do nothing,No upgrade; accept degraded service after trigger,0.0,0.0,inf,4
+2. Backhaul upgrade 100→200 Mbps,Double backhaul capacity on all 5 BS links,40.0,inf,inf,3
+3. Core router upgrade,Upgrade CR-1/CR-2 processing (≈ +20% effective headroom),25.0,7.29,3.429,1
+4. Add one base station,Split load across 6 sites instead of 5 (≈ +20% per-site),60.0,7.29,8.23,2
