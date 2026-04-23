@@ -1,4 +1,4 @@
 timestamp_utc,strategy,outdoor_cov_pct,delta_vs_baseline_pp,note
-2026-04-23T19:28:11.178Z,A: Baseline (h_b=30m),4.641,0.0,"7 sites, 43 dBm TX, 30m antenna"
-2026-04-23T19:28:11.178Z,B: Antenna +10m → 40m,6.08,1.439,+1.5 pp: COST 231 path loss ↓ 2.3 dB
-2026-04-23T19:28:11.178Z,C: Add gap-fill BS,4.641,0.0,"New site at centroid (25,25) km"
+2026-04-23T19:40:18.379Z,A: Baseline (h_b=30m),4.641,0.0,"7 sites, 43 dBm TX, 30m antenna"
+2026-04-23T19:40:18.379Z,B: Antenna +10m → 40m,6.08,1.439,+1.5 pp: COST 231 path loss ↓ 2.3 dB
+2026-04-23T19:40:18.379Z,C: Add gap-fill BS,4.641,0.0,"New site at centroid (25,25) km"

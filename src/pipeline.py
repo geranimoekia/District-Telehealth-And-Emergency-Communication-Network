@@ -33,15 +33,6 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Colour helpers (works on Windows via ANSI if terminal supports it)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -89,7 +80,7 @@ STAGES = [
         "label": "Build network topology",
         "module": "src.topology",
         "run_fn": "run",
-        "subprocess_cmd": ["python", "src/topology.py"],
+        "subprocess_cmd": ["python", "-m", "src.topology"],
         "objective": "O-02",
         "required_inputs": ["config"],
         "outputs_key": "topology",
@@ -99,7 +90,7 @@ STAGES = [
         "label": "Traffic & teletraffic analysis (Erlang B)",
         "module": "src.traffic",
         "run_fn": "run",
-        "subprocess_cmd": ["python", "src/traffic.py"],
+        "subprocess_cmd": ["python", "-m", "src.traffic"],
         "objective": "O-04 / O-05",
         "required_inputs": ["config"],
         "outputs_key": "traffic",
@@ -109,7 +100,7 @@ STAGES = [
         "label": "Teletraffic KPIs (delay, GoS, stress sweep)",
         "module": "src.teletraffic",
         "run_fn": "run",
-        "subprocess_cmd": ["python", "src/teletraffic.py"],
+        "subprocess_cmd": ["python", "-m", "src.teletraffic"],
         "objective": "O-05 / O-07",
         "required_inputs": ["config", "traffic"],
         "outputs_key": "teletraffic",
@@ -119,7 +110,7 @@ STAGES = [
         "label": "Wireless propagation & coverage (COST 231-Hata)",
         "module": "src.wireless",
         "run_fn": "run",
-        "subprocess_cmd": ["python", "src/wireless.py"],
+        "subprocess_cmd": ["python", "-m", "src.wireless"],
         "objective": "O-08 / O-09",
         "required_inputs": ["config"],
         "outputs_key": "wireless",
@@ -129,7 +120,7 @@ STAGES = [
         "label": "Routing (Dijkstra) & CR-1 failure injection",
         "module": "src.routing",
         "run_fn": "run",
-        "subprocess_cmd": ["python", "src/routing.py"],
+        "subprocess_cmd": ["python", "-m", "src.routing"],
         "objective": "O-10 / O-12",
         "required_inputs": ["config", "topology"],
         "outputs_key": "routing",
@@ -139,7 +130,7 @@ STAGES = [
         "label": "Signalling — SS7 call setup delay model",
         "module": "src.signalling",
         "run_fn": "run",
-        "subprocess_cmd": ["python", "src/signalling.py"],
+        "subprocess_cmd": ["python", "-m", "src.signalling"],
         "objective": "O-11",
         "required_inputs": ["config", "routing"],
         "outputs_key": "signalling",
@@ -149,7 +140,7 @@ STAGES = [
         "label": "Backhaul link budget (fade margin, rain attenuation)",
         "module": "src.backhaul",
         "run_fn": "run",
-        "subprocess_cmd": ["python", "src/backhaul.py"],
+        "subprocess_cmd": ["python", "-m", "src.backhaul"],
         "objective": "O-13 / O-14",
         "required_inputs": ["config"],
         "outputs_key": "backhaul",
@@ -159,7 +150,7 @@ STAGES = [
         "label": "QoS KPI verification (telemetry P95, voice blocking, video P95)",
         "module": "src.qos",
         "run_fn": "run",
-        "subprocess_cmd": ["python", "src/qos.py"],
+        "subprocess_cmd": ["python", "-m", "src.qos"],
         "objective": "O-15",
         "required_inputs": ["config", "traffic", "teletraffic", "routing"],
         "outputs_key": "qos",
@@ -169,7 +160,7 @@ STAGES = [
         "label": "Stress test — breaking point load sweep (α = 1.0 → 5.0)",
         "module": "src.stress_test",
         "run_fn": "run",
-        "subprocess_cmd": ["python", "src/stress test.py"],
+        "subprocess_cmd": ["python", "-m", "src.stress_test"],
         "objective": "O-07 / O-12",
         "required_inputs": ["config", "qos"],
         "outputs_key": "stress",
@@ -179,7 +170,7 @@ STAGES = [
         "label": "5-year utilisation forecast & upgrade triggers",
         "module": "src.forecasting",
         "run_fn": "run",
-        "subprocess_cmd": ["python", "src/forecasting.py"],
+        "subprocess_cmd": ["python", "-m", "src.forecasting"],
         "objective": "O-16",
         "required_inputs": ["config", "traffic"],
         "outputs_key": "forecasting",
@@ -200,15 +191,14 @@ KPI_TARGETS = {
 # Required output files produced by the full pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 REQUIRED_OUTPUTS = [
-    "outputs/qos_summary.csv",
-    "outputs/stress_test_sweep.csv",
-    "outputs/stress_test_per_class_failure.csv",
+    "outputs/traffic_matrix.csv",
+    "outputs/traffic_offered_load.csv",
+    "outputs/teletraffic_delay_kpis.csv",
+    "outputs/teletraffic_erlang_curves.csv",
+    "outputs/teletraffic_stress_sweep.csv",
     "outputs/forecasting_utilisation_annual.csv",
     "outputs/forecasting_upgrade_plan.csv",
-    "outputs/wireless_coverage_summary.csv",
-    "outputs/wireless_link_budget.csv",
     "figures/topology.png",
-    "figures/routing.png",
 ]
 
 
@@ -283,10 +273,7 @@ def try_subprocess_run(stage: dict) -> bool:
     if not cmd:
         return False
     try:
-        env = os.environ.copy()
-        env.setdefault("PYTHONIOENCODING", "utf-8")
-        env.setdefault("PYTHONUTF8", "1")
-        result = subprocess.run(cmd, capture_output=False, text=True, env=env)
+        result = subprocess.run(cmd, capture_output=False, text=True)
         return result.returncode == 0
     except FileNotFoundError:
         fail(f"Command not found: {' '.join(cmd)}")
@@ -321,7 +308,7 @@ def check_kpis(results: dict) -> dict:
         "telemetry_p95_ms":   qos.get("telemetry_p95_ms"),
         "voice_blocking_pct": qos.get("voice_blocking_pct"),
         "video_p95_ms":       qos.get("video_p95_ms"),
-        "min_fade_margin_db": qos.get("min_fade_margin_db", backhaul.get("min_fade_margin_db")),
+        "min_fade_margin_db": backhaul.get("min_fade_margin_db"),
     }
 
     # Also try to read from CSV if module didn't populate results dict
@@ -568,8 +555,8 @@ Examples:
         help="Abort the pipeline on the first stage failure"
     )
     parser.add_argument(
-        "--dashboard", action="store_true",
-        help="Launch the Streamlit dashboard after the pipeline completes"
+        "--no-dashboard", action="store_true",
+        help="Skip launching the Streamlit dashboard at the end"
     )
 
     args = parser.parse_args()
@@ -578,7 +565,7 @@ Examples:
         skip_stages=args.skip,
         only_stage=args.stage,
         strict=args.strict,
-        launch_dashboard=args.dashboard,
+        launch_dashboard=not args.no_dashboard,
     )
     sys.exit(exit_code)
 
