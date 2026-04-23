@@ -63,6 +63,44 @@ def free_space_path_loss_db(d_km: float, f_ghz: float) -> float:
     return 20.0 * np.log10(max(d_km, 0.001)) + 20.0 * np.log10(f_ghz) + 92.45
 
 
+def rain_attenuation_db(d_km: float, f_ghz: float) -> float:
+    """
+    Lightweight rain-loss approximation used by the backhaul analyses.
+    """
+    return round(0.02 * max(d_km, 0.0), 3)
+
+
+def microwave_budget(f_ghz: float, d_km: float, cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Simple microwave link-budget helper shared by dashboard/backhaul scripts.
+    """
+    fspl_db = float(free_space_path_loss_db(d_km, f_ghz))
+    atmospheric_loss_db = 0.5
+    rain_loss_db = float(rain_attenuation_db(d_km, f_ghz))
+    rx_power_dbm = (
+        cfg["tx_power_dbm"]
+        + cfg["tx_antenna_gain_dbi"]
+        + cfg["rx_antenna_gain_dbi"]
+        - fspl_db
+        - atmospheric_loss_db
+        - rain_loss_db
+        - cfg["misc_losses_db"]
+    )
+    link_margin_db = rx_power_dbm - cfg["receiver_threshold_dbm"]
+    required_margin = cfg["min_fade_margin_db"]
+
+    return {
+        "fspl_db": round(fspl_db, 2),
+        "atmospheric_loss_db": round(atmospheric_loss_db, 2),
+        "rain_attenuation_db": round(rain_loss_db, 3),
+        "rx_power_dbm": round(rx_power_dbm, 2),
+        "link_margin_db": round(link_margin_db, 2),
+        "required_margin": required_margin,
+        "status": "PASS" if link_margin_db >= required_margin else "FAIL",
+        "capacity_mbps": cfg.get("capacity_mbps", 100.0),
+    }
+
+
 # ─── Grid builders ───────────────────────────────────────────────────────────
 
 def build_received_power_grid(

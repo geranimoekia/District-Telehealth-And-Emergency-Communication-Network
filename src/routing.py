@@ -44,23 +44,19 @@ def compute_routing_table(G, source):
     
     # Run Dijkstra to get shortest paths
     try:
-        # predecessors dict: {node: predecessor_on_shortest_path}
-        distances, predecessors = nx.single_source_dijkstra(G, source, weight='weight')
+        distances, paths = nx.single_source_dijkstra(G, source, weight='weight')
         
         for dest in G.nodes():
             if dest == source:
                 routing_table[dest] = None  # No next hop to self
                 continue
             
-            if dest not in predecessors:
+            if dest not in paths:
                 routing_table[dest] = None  # Unreachable
                 continue
-            
-            # Trace back to find next hop
-            current = dest
-            while predecessors[current] != source and predecessors[current] is not None:
-                current = predecessors[current]
-            routing_table[dest] = current
+
+            path = paths[dest]
+            routing_table[dest] = path[1] if len(path) > 1 else None
     
     except nx.NetworkXNoPath:
         for dest in G.nodes():

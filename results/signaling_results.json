@@ -1,0 +1,159 @@
+{
+  "signaling": {
+    "normal": {
+      "calls_per_sec": 0.006388888888888889,
+      "per_bs": {
+        "BS1": {
+          "signaling_load_kbps": 0.05,
+          "channel_utilisation_pct": 0.1,
+          "call_setup_delay_ms": 7.11,
+          "propagation_delay_ms": 0.11,
+          "processing_delay_ms": 7.0,
+          "queuing_delay_ms": 0.0,
+          "telemetry_sla_met": true,
+          "voice_sla_met": true,
+          "overloaded": false
+        },
+        "BS2": {
+          "signaling_load_kbps": 0.05,
+          "channel_utilisation_pct": 0.1,
+          "call_setup_delay_ms": 7.11,
+          "propagation_delay_ms": 0.11,
+          "processing_delay_ms": 7.0,
+          "queuing_delay_ms": 0.0,
+          "telemetry_sla_met": true,
+          "voice_sla_met": true,
+          "overloaded": false
+        },
+        "BS3": {
+          "signaling_load_kbps": 0.05,
+          "channel_utilisation_pct": 0.1,
+          "call_setup_delay_ms": 7.11,
+          "propagation_delay_ms": 0.11,
+          "processing_delay_ms": 7.0,
+          "queuing_delay_ms": 0.0,
+          "telemetry_sla_met": true,
+          "voice_sla_met": true,
+          "overloaded": false
+        },
+        "BS4": {
+          "signaling_load_kbps": 0.05,
+          "channel_utilisation_pct": 0.1,
+          "call_setup_delay_ms": 7.09,
+          "propagation_delay_ms": 0.09,
+          "processing_delay_ms": 7.0,
+          "queuing_delay_ms": 0.0,
+          "telemetry_sla_met": true,
+          "voice_sla_met": true,
+          "overloaded": false
+        },
+        "BS5": {
+          "signaling_load_kbps": 0.05,
+          "channel_utilisation_pct": 0.1,
+          "call_setup_delay_ms": 7.11,
+          "propagation_delay_ms": 0.11,
+          "processing_delay_ms": 7.0,
+          "queuing_delay_ms": 0.0,
+          "telemetry_sla_met": true,
+          "voice_sla_met": true,
+          "overloaded": false
+        }
+      },
+      "aggregate": {
+        "total_signaling_load_kbps": 0.26,
+        "avg_setup_delay_ms": 7.11,
+        "max_setup_delay_ms": 7.11,
+        "p95_setup_delay_ms": 7.11,
+        "utilisation_ok": true,
+        "sla_telemetry_ok": true,
+        "sla_voice_ok": true
+      }
+    },
+    "burst": {
+      "calls_per_sec": 0.03194444444444445,
+      "per_bs": {
+        "BS1": {
+          "signaling_load_kbps": 0.26,
+          "channel_utilisation_pct": 0.4,
+          "call_setup_delay_ms": 7.11,
+          "propagation_delay_ms": 0.11,
+          "processing_delay_ms": 7.0,
+          "queuing_delay_ms": 0.0,
+          "telemetry_sla_met": true,
+          "voice_sla_met": true,
+          "overloaded": false
+        },
+        "BS2": {
+          "signaling_load_kbps": 0.26,
+          "channel_utilisation_pct": 0.4,
+          "call_setup_delay_ms": 7.11,
+          "propagation_delay_ms": 0.11,
+          "processing_delay_ms": 7.0,
+          "queuing_delay_ms": 0.0,
+          "telemetry_sla_met": true,
+          "voice_sla_met": true,
+          "overloaded": false
+        },
+        "BS3": {
+          "signaling_load_kbps": 0.26,
+          "channel_utilisation_pct": 0.4,
+          "call_setup_delay_ms": 7.11,
+          "propagation_delay_ms": 0.11,
+          "processing_delay_ms": 7.0,
+          "queuing_delay_ms": 0.0,
+          "telemetry_sla_met": true,
+          "voice_sla_met": true,
+          "overloaded": false
+        },
+        "BS4": {
+          "signaling_load_kbps": 0.26,
+          "channel_utilisation_pct": 0.4,
+          "call_setup_delay_ms": 7.09,
+          "propagation_delay_ms": 0.09,
+          "processing_delay_ms": 7.0,
+          "queuing_delay_ms": 0.0,
+          "telemetry_sla_met": true,
+          "voice_sla_met": true,
+          "overloaded": false
+        },
+        "BS5": {
+          "signaling_load_kbps": 0.26,
+          "channel_utilisation_pct": 0.4,
+          "call_setup_delay_ms": 7.11,
+          "propagation_delay_ms": 0.11,
+          "processing_delay_ms": 7.0,
+          "queuing_delay_ms": 0.0,
+          "telemetry_sla_met": true,
+          "voice_sla_met": true,
+          "overloaded": false
+        }
+      },
+      "aggregate": {
+        "total_signaling_load_kbps": 1.28,
+        "avg_setup_delay_ms": 7.11,
+        "max_setup_delay_ms": 7.11,
+        "p95_setup_delay_ms": 7.11,
+        "utilisation_ok": true,
+        "sla_telemetry_ok": true,
+        "sla_voice_ok": true
+      }
+    },
+    "comparison": {
+      "load_multiplier": 5.0,
+      "signaling_load_increase_pct": 392.3076923076923,
+      "delay_increase_pct": 0.0,
+      "normal_utilisation_ok": true,
+      "burst_utilisation_ok": true,
+      "normal_sla_met": true,
+      "burst_sla_met": true
+    },
+    "metadata": {
+      "load_multiplier": 1.0,
+      "normal_calls_per_sec": 0.006388888888888889,
+      "burst_calls_per_sec": 0.03194444444444445,
+      "signaling_msg_size_bytes": 100,
+      "signaling_msgs_per_call": 10,
+      "channel_capacity_kbps": 64.0
+    }
+  }
+}

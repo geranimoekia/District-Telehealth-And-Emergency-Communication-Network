@@ -20,6 +20,9 @@ import os
 import sys
 import numpy as np
 import pandas as pd
+import matplotlib
+
+matplotlib.use("Agg")
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
