@@ -29,13 +29,13 @@ simulation:
   growth_rate: 0.15       # legacy; forecasting.py now uses per-class CAGR
 
 sites:
-  - {name: CR-1, label: District Hospital,      type: core_router,  x_km: 25.0, y_km: 25.0}
-  - {name: CR-2, label: District Health Office, type: core_router,  x_km: 20.0, y_km: 28.0}
-  - {name: BS1,  label: Clinic North-West,      type: base_station, x_km:  8.0, y_km: 40.0}
-  - {name: BS2,  label: Clinic North-East,      type: base_station, x_km: 42.0, y_km: 40.0}
-  - {name: BS3,  label: Clinic South-West,      type: base_station, x_km:  8.0, y_km: 10.0}
-  - {name: BS4,  label: Clinic South,           type: base_station, x_km: 25.0, y_km:  8.0}
-  - {name: BS5,  label: Clinic South-East,      type: base_station, x_km: 42.0, y_km: 10.0}
+  - {name: CR-1, label: "Palapye Primary Hospital",         type: core_router,  x_km: 25.0, y_km: 25.0}
+  - {name: CR-2, label: "Palapye Sub-District Health Office",type: core_router,  x_km: 24.2, y_km: 25.6}
+  - {name: BS1,  label: "Radisele Clinic (NW)",             type: base_station, x_km:  9.0, y_km: 42.0}
+  - {name: BS2,  label: "Lecheng Clinic (NE)",              type: base_station, x_km: 40.0, y_km: 41.0}
+  - {name: BS3,  label: "Mogome Clinic (SW)",               type: base_station, x_km: 10.0, y_km: 12.0}
+  - {name: BS4,  label: "Maunatlala Clinic (South)",        type: base_station, x_km: 24.0, y_km:  8.0}
+  - {name: BS5,  label: "Lerala Clinic (SE)",               type: base_station, x_km: 43.0, y_km:  9.0}
 
 links:
   # Core backbone - 13 GHz microwave primary + LTE priority bearer backup.
@@ -95,6 +95,7 @@ environment:
   grid_resolution_m: 100
   district_size_km: 50.0
   terrain_type: suburban_rural
+  rainfall_zone: botswana
 
 backhaul:
   frequency_ghz: 7.0
