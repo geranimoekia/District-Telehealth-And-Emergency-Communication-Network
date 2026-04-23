@@ -1,9 +1,9 @@
 timestamp_utc,tx_power_dbm,outdoor_cov_pct,kpi_75pct_fail,breaking_point,test_type
-2026-04-23T18:29:50.824Z,30.0,0.845,True,True,tx_power_sweep
-2026-04-23T18:29:51.073Z,33.0,1.253,True,False,tx_power_sweep
-2026-04-23T18:29:51.338Z,36.0,1.856,True,False,tx_power_sweep
-2026-04-23T18:29:51.609Z,39.0,2.74,True,False,tx_power_sweep
-2026-04-23T18:29:51.867Z,43.0,4.641,True,False,tx_power_sweep
-2026-04-23T18:29:52.115Z,46.0,6.86,True,False,tx_power_sweep
-2026-04-23T18:29:52.364Z,49.0,10.071,True,False,tx_power_sweep
-2026-04-23T18:29:52.587Z,43.0,3.979,True,False,site_removal_BS5
+2026-04-23T18:33:28.264Z,30.0,0.845,True,True,tx_power_sweep
+2026-04-23T18:33:28.507Z,33.0,1.253,True,False,tx_power_sweep
+2026-04-23T18:33:28.816Z,36.0,1.856,True,False,tx_power_sweep
+2026-04-23T18:33:29.102Z,39.0,2.74,True,False,tx_power_sweep
+2026-04-23T18:33:29.377Z,43.0,4.641,True,False,tx_power_sweep
+2026-04-23T18:33:29.617Z,46.0,6.86,True,False,tx_power_sweep
+2026-04-23T18:33:29.865Z,49.0,10.071,True,False,tx_power_sweep
+2026-04-23T18:33:30.080Z,43.0,3.979,True,False,site_removal_BS5

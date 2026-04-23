@@ -33,12 +33,6 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
-except (AttributeError, ValueError):
-    pass
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Colour helpers (works on Windows via ANSI if terminal supports it)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -84,8 +78,9 @@ STAGES = [
     {
         "name": "topology",
         "label": "Build network topology",
-        "module": None,
-        "subprocess_cmd": ["python", "src/topology.py"],
+        "module": "src.topology",
+        "run_fn": "run",
+        "subprocess_cmd": ["python", "-m", "src.topology"],
         "objective": "O-02",
         "required_inputs": ["config"],
         "outputs_key": "topology",
@@ -93,8 +88,9 @@ STAGES = [
     {
         "name": "traffic",
         "label": "Traffic & teletraffic analysis (Erlang B)",
-        "module": None,
-        "subprocess_cmd": ["python", "src/traffic.py"],
+        "module": "src.traffic",
+        "run_fn": "run",
+        "subprocess_cmd": ["python", "-m", "src.traffic"],
         "objective": "O-04 / O-05",
         "required_inputs": ["config"],
         "outputs_key": "traffic",
@@ -102,8 +98,9 @@ STAGES = [
     {
         "name": "teletraffic",
         "label": "Teletraffic KPIs (delay, GoS, stress sweep)",
-        "module": None,
-        "subprocess_cmd": ["python", "src/teletraffic.py"],
+        "module": "src.teletraffic",
+        "run_fn": "run",
+        "subprocess_cmd": ["python", "-m", "src.teletraffic"],
         "objective": "O-05 / O-07",
         "required_inputs": ["config", "traffic"],
         "outputs_key": "teletraffic",
@@ -111,8 +108,9 @@ STAGES = [
     {
         "name": "wireless",
         "label": "Wireless propagation & coverage (COST 231-Hata)",
-        "module": None,
-        "subprocess_cmd": ["python", "src/wireless.py"],
+        "module": "src.wireless",
+        "run_fn": "run",
+        "subprocess_cmd": ["python", "-m", "src.wireless"],
         "objective": "O-08 / O-09",
         "required_inputs": ["config"],
         "outputs_key": "wireless",
@@ -120,8 +118,9 @@ STAGES = [
     {
         "name": "routing",
         "label": "Routing (Dijkstra) & CR-1 failure injection",
-        "module": None,
-        "subprocess_cmd": ["python", "src/routing.py"],
+        "module": "src.routing",
+        "run_fn": "run",
+        "subprocess_cmd": ["python", "-m", "src.routing"],
         "objective": "O-10 / O-12",
         "required_inputs": ["config", "topology"],
         "outputs_key": "routing",
@@ -129,8 +128,9 @@ STAGES = [
     {
         "name": "signalling",
         "label": "Signalling — SS7 call setup delay model",
-        "module": None,
-        "subprocess_cmd": ["python", "src/signalling.py"],
+        "module": "src.signalling",
+        "run_fn": "run",
+        "subprocess_cmd": ["python", "-m", "src.signalling"],
         "objective": "O-11",
         "required_inputs": ["config", "routing"],
         "outputs_key": "signalling",
@@ -138,8 +138,9 @@ STAGES = [
     {
         "name": "backhaul",
         "label": "Backhaul link budget (fade margin, rain attenuation)",
-        "module": None,
-        "subprocess_cmd": ["python", "src/backhaul.py"],
+        "module": "src.backhaul",
+        "run_fn": "run",
+        "subprocess_cmd": ["python", "-m", "src.backhaul"],
         "objective": "O-13 / O-14",
         "required_inputs": ["config"],
         "outputs_key": "backhaul",
@@ -147,8 +148,9 @@ STAGES = [
     {
         "name": "qos",
         "label": "QoS KPI verification (telemetry P95, voice blocking, video P95)",
-        "module": None,
-        "subprocess_cmd": None,
+        "module": "src.qos",
+        "run_fn": "run",
+        "subprocess_cmd": ["python", "-m", "src.qos"],
         "objective": "O-15",
         "required_inputs": ["config", "traffic", "teletraffic", "routing"],
         "outputs_key": "qos",
@@ -156,17 +158,19 @@ STAGES = [
     {
         "name": "stress",
         "label": "Stress test — breaking point load sweep (α = 1.0 → 5.0)",
-        "module": None,
-        "subprocess_cmd": ["python", "src/stress test.py"],
+        "module": "src.stress_test",
+        "run_fn": "run",
+        "subprocess_cmd": ["python", "-m", "src.stress_test"],
         "objective": "O-07 / O-12",
-        "required_inputs": ["config", "teletraffic"],
+        "required_inputs": ["config", "qos"],
         "outputs_key": "stress",
     },
     {
         "name": "forecasting",
         "label": "5-year utilisation forecast & upgrade triggers",
-        "module": None,
-        "subprocess_cmd": ["python", "src/forecasting.py"],
+        "module": "src.forecasting",
+        "run_fn": "run",
+        "subprocess_cmd": ["python", "-m", "src.forecasting"],
         "objective": "O-16",
         "required_inputs": ["config", "traffic"],
         "outputs_key": "forecasting",
@@ -218,19 +222,15 @@ def load_scenario(scenario_path: str = "scenario.yaml") -> dict:
     with open(path) as f:
         config = yaml.safe_load(f)
 
-    required_keys = ["sites", "links"]
+    required_keys = ["sites", "links", "traffic_classes"]
     missing = [k for k in required_keys if k not in config]
     if missing:
         fail(f"scenario.yaml is missing required keys: {missing}")
         sys.exit(1)
 
-    if "traffic" not in config and "traffic_classes" not in config:
-        fail("scenario.yaml is missing required traffic configuration: expected 'traffic' or 'traffic_classes'")
-        sys.exit(1)
-
     ok(f"scenario.yaml loaded — {len(config.get('sites', []))} sites, "
        f"{len(config.get('links', []))} links, "
-       f"{len(config.get('traffic', config.get('traffic_classes', [])))} traffic classes")
+       f"{len(config.get('traffic_classes', []))} traffic classes")
     return config
 
 
@@ -273,9 +273,7 @@ def try_subprocess_run(stage: dict) -> bool:
     if not cmd:
         return False
     try:
-        env = os.environ.copy()
-        env.setdefault("PYTHONIOENCODING", "utf-8")
-        result = subprocess.run(cmd, capture_output=False, text=True, env=env)
+        result = subprocess.run(cmd, capture_output=False, text=True)
         return result.returncode == 0
     except FileNotFoundError:
         fail(f"Command not found: {' '.join(cmd)}")
@@ -469,9 +467,6 @@ def run_pipeline(
                     fail(f"Stage '{name}' failed (both module and subprocess)")
         elif stage.get("subprocess_cmd"):
             passed = try_subprocess_run(stage)
-        else:
-            ok("No executable stage configured; relying on generated outputs and KPI checks")
-            passed = True
 
         elapsed = time.time() - t0
         stage_results.append({"label": stage["label"], "passed": passed,
@@ -560,8 +555,8 @@ Examples:
         help="Abort the pipeline on the first stage failure"
     )
     parser.add_argument(
-        "--dashboard", action="store_true",
-        help="Launch the Streamlit dashboard after the pipeline completes"
+        "--no-dashboard", action="store_true",
+        help="Skip launching the Streamlit dashboard at the end"
     )
 
     args = parser.parse_args()
@@ -570,7 +565,7 @@ Examples:
         skip_stages=args.skip,
         only_stage=args.stage,
         strict=args.strict,
-        launch_dashboard=args.dashboard,
+        launch_dashboard=not args.no_dashboard,
     )
     sys.exit(exit_code)
 
