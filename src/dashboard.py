@@ -134,9 +134,44 @@ h3{font-size:14px!important;font-weight:600!important}
 [data-baseweb="tab"][aria-selected="true"]{color:var(--accent)!important;border-bottom:2px solid var(--accent)!important;font-weight:600!important}
 [data-baseweb="tab"] div,[data-baseweb="tab"] p,[data-baseweb="tab"] span{color:inherit!important}
 [data-baseweb="select"] [data-testid="stMarkdownContainer"] p,[data-baseweb="select"] div[class*="ValueContainer"] *{color:var(--text)!important}
+[data-testid="stSidebar"] [data-baseweb="select"] *{color:var(--text)!important}
+[data-testid="stSidebar"] [data-baseweb="select"]>div{background:var(--surface)!important;border-color:var(--border)!important}
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label,[data-testid="stSidebar"] [data-testid="stCheckbox"] p{color:var(--text)!important}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary,[data-testid="stSidebar"] [data-testid="stExpander"] summary *{color:var(--text)!important}
+[data-testid="stMultiSelect"] [data-baseweb="tag"] span,[data-testid="stMultiSelect"] [data-baseweb="tag"] div{color:var(--text)!important}
+[data-testid="stMultiSelect"] [data-baseweb="select"] *{color:var(--text)!important}
+.stNumberInput input,.stTextInput input,.stTextArea textarea{color:var(--text)!important;-webkit-text-fill-color:var(--text)!important;background:var(--surface)!important}
 .js-plotly-plot{border-radius:var(--r);border:1px solid var(--border);overflow:hidden}
 .antenna-card{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--purple);border-radius:var(--r);padding:14px 18px;margin-bottom:10px;box-shadow:var(--shadow)}
 .qos-fail-order{background:#FEF2F2;border:1px solid #FCA5A5;border-radius:var(--r);padding:10px 14px;margin-bottom:12px;font-size:12px}
+.signal-stage-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:12px;margin-bottom:14px}
+.signal-stage-card{background:linear-gradient(180deg,#FFFFFF 0%,#F8FAFC 100%);border:1px solid var(--border);border-radius:var(--r);padding:14px;box-shadow:var(--shadow);min-height:156px}
+.signal-stage-step{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--subtle);margin-bottom:8px}
+.signal-stage-node{font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px}
+.signal-stage-role{font-size:11px;color:var(--muted);margin-bottom:10px}
+.signal-stage-msg{display:inline-block;background:var(--accent-bg);border:1px solid var(--blue-bdr);border-radius:999px;padding:3px 9px;font-size:10px;font-weight:700;color:var(--accent);margin-bottom:10px}
+.signal-stage-copy{font-size:12px;line-height:1.55;color:var(--text)}
+.signal-arrow-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:-4px 0 14px}
+.signal-arrow{font-size:11px;font-weight:700;color:var(--muted);text-align:center}
+.signal-arrow span{display:block;background:var(--surface2);border:1px dashed var(--border2);border-radius:999px;padding:7px 10px}
+.signal-journey{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow)}
+.signal-journey-title{font-size:12px;font-weight:700;color:var(--subtle);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.signal-journey-row{display:grid;grid-template-columns:110px 110px 1fr;gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--border)}
+.signal-journey-row:last-child{border-bottom:none;padding-bottom:0}
+.signal-journey-phase{font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
+.signal-journey-actor{font-size:12px;font-weight:600;color:var(--text)}
+.signal-journey-event{font-size:12px;line-height:1.55;color:var(--muted)}
+.signal-kpi-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:14px 0}
+.signal-kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow)}
+.signal-kpi-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--subtle);margin-bottom:5px}
+.signal-kpi-value{font-size:20px;font-weight:700;color:var(--text);letter-spacing:-.02em}
+.signal-kpi-note{font-size:11px;color:var(--muted);margin-top:4px}
+@media (max-width: 1100px){
+  .signal-stage-grid{grid-template-columns:1fr}
+  .signal-arrow-row{grid-template-columns:1fr}
+  .signal-journey-row{grid-template-columns:1fr}
+  .signal-kpi-strip{grid-template-columns:1fr}
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1295,15 +1330,15 @@ elif section == "Network":
     _eff_section = {"🗺 Map": "Network Map", "🔗 Topology": "Interactive Topology"}[_net_sub]
 
 elif section == "Radio & Access":
-    _ra_sub = st.radio("", ["📡 RF Coverage", "🏗 Antennas", "📶 Wireless Analysis"], horizontal=True, label_visibility="collapsed")
-    _eff_section = {"📡 RF Coverage": "RF_Coverage", "🏗 Antennas": "Antennas", "📶 Wireless Analysis": "Backhaul"}[_ra_sub]
+    _ra_sub = st.radio("", [" RF Coverage", " Antennas", " Wireless Analysis"], horizontal=True, label_visibility="collapsed")
+    _eff_section = {" RF Coverage": "RF_Coverage", " Antennas": "Antennas", " Wireless Analysis": "Backhaul"}[_ra_sub]
 
 elif section == "Core Network":
-    _cn_sub = st.radio("", ["🔀 Routing", "📞 Signaling", "📱 Call Handling"], horizontal=True, label_visibility="collapsed")
-    _eff_section = {"🔀 Routing": "Routing & Signaling", "📞 Signaling": "Signaling Details", "📱 Call Handling": "Call Termination"}[_cn_sub]
+    _cn_sub = st.radio("", [" Routing", " Signaling", " Call Handling"], horizontal=True, label_visibility="collapsed")
+    _eff_section = {" Routing": "Routing & Signaling", " Signaling": "Signaling Details", "📱 Call Handling": "Call Termination"}[_cn_sub]
 
 elif section == "Traffic":
-    _tr_sub = st.radio("", ["📊 Offered Load", "⏱ Delay", "📈 Summary"], horizontal=True, label_visibility="collapsed")
+    _tr_sub = st.radio("", [" Offered Load", "⏱ Delay", "📈 Summary"], horizontal=True, label_visibility="collapsed")
     _eff_section = {"📊 Offered Load": "Offered_Load", "⏱ Delay": "Delay_KPIs", "📈 Summary": "Traffic_Summary"}[_tr_sub]
 
 elif section == "Fault & Stress":
@@ -1311,8 +1346,8 @@ elif section == "Fault & Stress":
     _eff_section = {" Failures & Stress": "Fault & Stress", " QoS": "QoS"}[_fs_sub]
 
 elif section == "Planning":
-    _pl_sub = st.radio("", ["📈 Forecast", "💰 Billing & Upgrade"], horizontal=True, label_visibility="collapsed")
-    _eff_section = {"📈 Forecast": "Forecast", "💰 Billing & Upgrade": "Billing Analytics"}[_pl_sub]
+    _pl_sub = st.radio("", [" Forecast", " Billing & Upgrade"], horizontal=True, label_visibility="collapsed")
+    _eff_section = {" Forecast": "Forecast", " Billing & Upgrade": "Billing Analytics"}[_pl_sub]
 
 # ─── NETWORK MAP ────────────────────────────────────────────────────────
 if _eff_section == "Network Map":
