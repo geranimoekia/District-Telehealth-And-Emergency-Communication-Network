@@ -154,3 +154,18 @@ Then open [http://localhost:8501](http://localhost:8501) in your browser.
 **Course:** TELE 527 - Telecommunications Network Planning and Design  
 **Institution:** Botswana International University of Science and Technology (BIUST)  
 **Group:** PBL Group 1
+
+## Potential Applications and Limitations
+
+### Potential Applications
+
+The simulated network provides a planning framework for exploring how wireless connectivity could support rural healthcare facilities in the Palapye and Serowe areas of Botswana. Potential applications include:
+
+- **Telehealth consultations:** Supporting voice and video communication between clinics and district hospitals.
+- **Remote patient monitoring:** Exploring the transport of patient-monitoring and other healthcare IoT telemetry.
+- **Emergency communications:** Evaluating routing and backup-link behaviour during network failures.
+- **Network planning:** Comparing traffic loads, Quality of Service (QoS) targets, coverage assumptions, and potential capacity upgrades.
+
+### Limitations
+
+This project is a network simulation and planning tool. Its results depend on the configured topology, traffic models, propagation assumptions, and other simulation parameters. Simulated performance does not establish real-world coverage, service availability, clinical effectiveness, or deployment readiness. Field measurements and validation against an operational network would be required before using the results to guide implementation.
